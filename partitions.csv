@@ -1,0 +1,6 @@
+# Name,   Type, SubType, Offset,  Size, Flags
+# BT classic + WiFi together don't fit the default 1MB app partition;
+# needs a board with >= 4MB flash (standard for ESP32 dev boards).
+nvs,      data, nvs,     ,        0x6000,
+phy_init, data, phy,     ,        0x1000,
+factory,  app,  factory, ,        1700K,
