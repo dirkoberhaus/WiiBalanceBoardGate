@@ -100,9 +100,12 @@ while True:
    ~20s window after that press — this needs to happen every time, there's
    no persistent pairing (see [ARCHITECTURE.md](ARCHITECTURE.md#why-sync-every-time)).
 3. Connect your phone/laptop to the `WiiBalanceBoardGate-XXXXXX` network and
-   browse to `http://192.168.4.1/` for the live weight/COP visualization
-   with tap-to-set target and audio deviation feedback, or connect to
-   `ws://192.168.4.1/ws` directly for the raw JSON stream.
+   browse to **any hostname** — e.g. `http://board/` — for the live
+   weight/COP visualization with tap-to-set target and audio deviation
+   feedback. The device runs a catch-all DNS server that resolves every name
+   to itself, so you don't need to remember an IP address; `192.168.4.1`
+   still works too. Connect to `/ws` on whichever host you used for the raw
+   JSON WebSocket stream.
 4. The onboard display shows connection status and, on the TTGO T-Display,
    a graphical center-of-pressure panel. Press the board's built-in button
    (GPIO0 — the Heltec's PRG button / TTGO's top button) to tare (zero out

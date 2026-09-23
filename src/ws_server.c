@@ -1,5 +1,6 @@
 #include "ws_server.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "esp_http_server.h"
@@ -100,20 +101,59 @@ int ws_server_client_count(void)
     return (int)list_ws_clients(fds);
 }
 
-void ws_server_broadcast(const char *data, size_t len)
+// httpd_ws_send_frame_async() is misleadingly named - per its own header
+// comment it's a low-level, *synchronous* send meant to be called from
+// within a httpd_queue_work() work item, not directly from an arbitrary
+// task. Called directly (as this used to), a client whose connection went
+// stale without a clean close (phone walked out of WiFi range, etc.) can
+// make the underlying socket send() block for a long time - and since this
+// was called straight from the Bluetooth event task, that stalled *all*
+// Bluetooth processing, sample logging and display updates right along with
+// it: a total, silent freeze with no crash to explain it. Queuing the actual
+// send onto the httpd's own task instead means a stuck client only stalls
+// WebSocket delivery, not the whole device.
+#define MAX_BROADCAST_LEN 256
+
+typedef struct {
+    size_t len;
+    char data[MAX_BROADCAST_LEN];
+} broadcast_work_t;
+
+static void broadcast_work_fn(void *arg)
 {
+    broadcast_work_t *w = (broadcast_work_t *)arg;
     int fds[MAX_SOCKETS];
     size_t n = list_ws_clients(fds);
 
     httpd_ws_frame_t frame = {
         .type = HTTPD_WS_TYPE_TEXT,
-        .payload = (uint8_t *)data,
-        .len = len,
+        .payload = (uint8_t *)w->data,
+        .len = w->len,
     };
     for (size_t i = 0; i < n; i++) {
         esp_err_t err = httpd_ws_send_frame_async(s_server, fds[i], &frame);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, "Send to fd=%d failed: %s", fds[i], esp_err_to_name(err));
         }
+    }
+    free(w);
+}
+
+void ws_server_broadcast(const char *data, size_t len)
+{
+    if (!s_server || len == 0) {
+        return;
+    }
+    if (len > MAX_BROADCAST_LEN) {
+        len = MAX_BROADCAST_LEN; // shouldn't happen - our JSON messages are much smaller
+    }
+    broadcast_work_t *w = malloc(sizeof(broadcast_work_t));
+    if (!w) {
+        return;
+    }
+    memcpy(w->data, data, len);
+    w->len = len;
+    if (httpd_queue_work(s_server, broadcast_work_fn, w) != ESP_OK) {
+        free(w);
     }
 }

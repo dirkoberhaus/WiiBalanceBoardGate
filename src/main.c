@@ -4,8 +4,10 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "display.h"
+#include "dns_server.h"
 #include "wifi_ap.h"
 #include "ws_server.h"
 #include "wiimote_bt.h"
@@ -28,6 +30,15 @@ static const char *TAG = "main";
 static wiimote_bt_state_t s_bt_state = WIIMOTE_BT_SCANNING;
 static int64_t s_last_redraw_us = 0;
 static int64_t s_tare_msg_until_us = 0;
+
+// The display backends (SPI/I2C) aren't reentrant, but redraw_header(),
+// on_sample() and tare_button_task() run on three different tasks (esp_timer,
+// the Bluetooth event task, and this task, respectively) and all touch the
+// display. Without this, two of them interleaving mid-draw could corrupt the
+// panel's addressing state and hang it - this is exactly what caused the
+// TTGO T-Display to freeze after pressing the tare button while samples were
+// still coming in.
+static SemaphoreHandle_t s_display_mutex;
 
 // Graphical center-of-pressure panel - only does anything when
 // display_has_graphics() (i.e. the color TFT). Stacked *below* the status
@@ -95,9 +106,11 @@ static void redraw_header(void)
 {
     char line[22];
     snprintf(line, sizeof(line), "WIFI AP  C:%d", ws_server_client_count());
+    xSemaphoreTake(s_display_mutex, portMAX_DELAY);
     display_draw_text(0, 0, line);
     display_draw_text(0, 1, bt_state_text(s_bt_state));
     display_flush();
+    xSemaphoreGive(s_display_mutex);
 }
 
 static void header_timer_cb(void *arg)
@@ -137,6 +150,7 @@ static void on_sample(const wii_bb_sample_t *s)
     bool gfx = display_has_graphics();
     uint8_t total_row = gfx ? 7 : 6; // below the graphics panel vs. below the corner readout
 
+    xSemaphoreTake(s_display_mutex, portMAX_DELAY);
     char line[22];
     if (s->kg_valid) {
         if (!gfx) {
@@ -160,6 +174,7 @@ static void on_sample(const wii_bb_sample_t *s)
     }
     redraw_cop_panel(s);
     display_flush();
+    xSemaphoreGive(s_display_mutex);
 }
 
 static void tare_button_task(void *arg)
@@ -180,8 +195,10 @@ static void tare_button_task(void *arg)
             if (gpio_get_level(TARE_BUTTON_GPIO) == 0) {
                 ESP_LOGI(TAG, "Tare button pressed");
                 wiimote_bt_tare();
+                xSemaphoreTake(s_display_mutex, portMAX_DELAY);
                 display_draw_text(0, 2, "TARE SET");
                 display_flush();
+                xSemaphoreGive(s_display_mutex);
                 s_tare_msg_until_us = esp_timer_get_time() + TARE_MSG_DURATION_US;
             }
         }
@@ -194,6 +211,8 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "WiiBalanceBoardGate starting");
 
+    s_display_mutex = xSemaphoreCreateMutex();
+
     esp_err_t disp_err = display_init();
     if (disp_err == ESP_OK) {
         display_draw_text(0, 0, "WIFI AP  C:0");
@@ -205,6 +224,7 @@ void app_main(void)
     }
 
     ESP_ERROR_CHECK(wifi_ap_start(WIFI_AP_SSID, WIFI_AP_PASSWORD));
+    ESP_ERROR_CHECK(dns_server_start()); // lets any hostname (e.g. http://board/) resolve, not just the IP
     ESP_ERROR_CHECK(ws_server_start());
     wiimote_bt_start(on_sample, on_bt_state);
     xTaskCreate(tare_button_task, "tare_btn", 2048, NULL, 5, NULL);

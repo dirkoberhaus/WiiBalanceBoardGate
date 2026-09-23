@@ -67,6 +67,11 @@
 
   <div class="controls">
     <button id="sound-toggle">🔇 Ton aktivieren</button>
+    <div id="sound-hint" style="margin-top: -4px; font-size: 0.8rem; color: #9aa0a8;">Stereo = links/rechts, Tonhöhe = vorne/hinten, Lautstärke = Abweichung.</div>
+    <label class="tolerance-row" style="cursor: pointer;">
+      <input type="checkbox" id="audio-3d" style="flex: 0;">
+      <span>3D-Audio statt Tonhöhe für vorne/hinten (Kopfhörer empfohlen, experimentell)</span>
+    </label>
     <div class="tolerance-row">
       <span>Toleranz</span>
       <input type="range" id="tolerance" min="5" max="40" value="15">
@@ -86,6 +91,7 @@ const els = {
 const canvas = document.getElementById('cop');
 const ctx = canvas.getContext('2d');
 const soundToggle = document.getElementById('sound-toggle');
+const audio3dCheckbox = document.getElementById('audio-3d');
 const toleranceInput = document.getElementById('tolerance');
 const toleranceVal = document.getElementById('tolerance-val');
 
@@ -174,25 +180,57 @@ toleranceInput.addEventListener('input', () => {
 });
 
 // --- Audio feedback -------------------------------------------------------
-// Silent while inside the tolerance ring; once outside, a tone pans toward
-// the direction of the error and gets louder/higher the further off you are.
+// Silent while inside the tolerance ring; once outside, a tone points toward
+// the direction of the error and gets louder the further off you are.
 // Needs a user gesture to start (iOS/browser autoplay policy).
+//
+// Two selectable ways to convey front/back (left/right is always the
+// StereoPanner's pan - that one's reliable and not worth alternatives for):
+//  - "pitch" (default): tone gets higher/lower with front/back error. Works
+//    on any speaker, no headphones needed.
+//  - "3d": a real positional PannerNode (HRTF), front/back conveyed via
+//    binaural spatial cues instead of pitch. Needs headphones to make any
+//    sense, and even then front/back is a famously unreliable cue in real
+//    binaural hearing too, not just in software - offered as an option to
+//    compare against pitch, not because it's expected to win.
 
-let audioCtx = null, oscillator = null, gainNode = null, pannerNode = null;
+let audioCtx = null, oscillator = null, gainNode = null;
+let stereoPanner = null, panner3d = null, activeSpatializer = null;
 let soundEnabled = false;
+let audioMode = 'pitch'; // or '3d'
+
+function setAudioMode(mode) {
+  audioMode = mode;
+  if (!audioCtx) {
+    return; // applied once initAudio() runs
+  }
+  if (activeSpatializer) {
+    gainNode.disconnect(activeSpatializer);
+    activeSpatializer.disconnect();
+  }
+  activeSpatializer = (mode === '3d') ? panner3d : stereoPanner;
+  gainNode.connect(activeSpatializer);
+  activeSpatializer.connect(audioCtx.destination);
+}
 
 function initAudio() {
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   oscillator = audioCtx.createOscillator();
   gainNode = audioCtx.createGain();
-  pannerNode = audioCtx.createStereoPanner();
+  stereoPanner = audioCtx.createStereoPanner();
+  panner3d = audioCtx.createPanner();
+  panner3d.panningModel = 'HRTF';
+  panner3d.distanceModel = 'linear';
+  panner3d.refDistance = 1;
+  panner3d.maxDistance = 3;
 
   oscillator.type = 'sine';
-  oscillator.frequency.value = 300;
+  oscillator.frequency.value = 400;
   gainNode.gain.value = 0;
 
-  oscillator.connect(gainNode).connect(pannerNode).connect(audioCtx.destination);
+  oscillator.connect(gainNode);
   oscillator.start();
+  setAudioMode(audioMode);
 }
 
 soundToggle.addEventListener('click', () => {
@@ -205,6 +243,10 @@ soundToggle.addEventListener('click', () => {
   }
   soundToggle.textContent = soundEnabled ? '🔊 Ton an' : '🔇 Ton aktivieren';
   soundToggle.classList.toggle('active', soundEnabled);
+});
+
+audio3dCheckbox.addEventListener('change', () => {
+  setAudioMode(audio3dCheckbox.checked ? '3d' : 'pitch');
 });
 
 function updateAudio(cop) {
@@ -226,11 +268,21 @@ function updateAudio(cop) {
     return;
   }
 
-  // How far past the tolerance ring, saturating at "very off" = 1.0.
+  // How far past the tolerance ring, saturating at "very off" = 1.0 - drives
+  // volume only, so it doesn't fight with pitch/position for meaning.
   const over = Math.min((dist - tolerance) / 0.6, 1);
   gainNode.gain.setTargetAtTime(0.05 + 0.35 * over, t, 0.05);
-  oscillator.frequency.setTargetAtTime(280 + 500 * over, t, 0.05);
-  pannerNode.pan.setTargetAtTime(Math.max(-1, Math.min(1, dx * 2)), t, 0.05);
+
+  // Which physical side counts as "front" depends on how the board is
+  // oriented - flip the sign on dy below if it's backwards for your setup.
+  if (audioMode === '3d') {
+    // Web Audio's default listener faces -Z, so "in front" is negative Z.
+    panner3d.positionX.setTargetAtTime(dx * 2, t, 0.05);
+    panner3d.positionZ.setTargetAtTime(-dy * 2, t, 0.05);
+  } else {
+    oscillator.frequency.setTargetAtTime(400 + dy * 250, t, 0.05);
+    stereoPanner.pan.setTargetAtTime(Math.max(-1, Math.min(1, dx * 2)), t, 0.05);
+  }
 }
 
 function connect() {
