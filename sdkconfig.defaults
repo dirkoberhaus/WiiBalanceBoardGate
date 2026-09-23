@@ -8,6 +8,10 @@ CONFIG_BT_HID_HOST_ENABLED=y
 
 # We don't need BLE at all; keep it out to save RAM.
 CONFIG_BT_BLE_ENABLED=n
+# The BLE/BR-EDR/dual-mode choice defaults to BLE-only regardless of the
+# option above and must be set separately, or esp_bt_controller_enable()
+# rejects ESP_BT_MODE_CLASSIC_BT with ESP_ERR_INVALID_ARG.
+CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY=y
 
 # WebSocket support for the HTTP server, used to stream samples.
 CONFIG_HTTPD_WS_SUPPORT=y

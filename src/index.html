@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WiiBalanceBoardGate</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 16px; box-sizing: border-box;
+    background: #14161a; color: #e8e8ea;
+    font-family: -apple-system, system-ui, sans-serif;
+  }
+  h1 { font-size: 1.1rem; font-weight: 600; margin: 0 0 4px; }
+  #status { font-size: 0.85rem; margin-bottom: 16px; }
+  #status.ok { color: #4ade80; }
+  #status.bad { color: #f87171; }
+  .grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    max-width: 420px; margin-bottom: 16px;
+  }
+  .cell {
+    background: #1e2128; border-radius: 10px; padding: 12px;
+    text-align: center;
+  }
+  .cell .label { font-size: 0.75rem; color: #9aa0a8; }
+  .cell .value { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  #total {
+    max-width: 420px; background: #1e2128; border-radius: 10px;
+    padding: 12px; text-align: center; margin-bottom: 16px;
+  }
+  #total .value { font-size: 2rem; font-weight: 700; }
+  canvas {
+    background: #1e2128; border-radius: 10px; display: block;
+    max-width: 100%;
+  }
+</style>
+</head>
+<body>
+  <h1>WiiBalanceBoardGate</h1>
+  <div id="status" class="bad">connecting…</div>
+
+  <div class="grid">
+    <div class="cell"><div class="label">TOP LEFT</div><div class="value" id="tl">–</div></div>
+    <div class="cell"><div class="label">TOP RIGHT</div><div class="value" id="tr">–</div></div>
+    <div class="cell"><div class="label">BOTTOM LEFT</div><div class="value" id="bl">–</div></div>
+    <div class="cell"><div class="label">BOTTOM RIGHT</div><div class="value" id="br">–</div></div>
+  </div>
+
+  <div id="total"><div class="label">TOTAL</div><div class="value" id="total-val">– kg</div></div>
+
+  <canvas id="cop" width="300" height="300"></canvas>
+
+<script>
+const statusEl = document.getElementById('status');
+const els = {
+  tl: document.getElementById('tl'),
+  tr: document.getElementById('tr'),
+  bl: document.getElementById('bl'),
+  br: document.getElementById('br'),
+  total: document.getElementById('total-val'),
+};
+const canvas = document.getElementById('cop');
+const ctx = canvas.getContext('2d');
+
+function fmt(kg) {
+  return kg.toFixed(1) + ' kg';
+}
+
+function drawCOP(tl, tr, bl, br, total) {
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  // board outline
+  ctx.strokeStyle = '#3a3f47';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(20, 20, w - 40, h - 40);
+  ctx.beginPath();
+  ctx.moveTo(w / 2, 20); ctx.lineTo(w / 2, h - 20);
+  ctx.moveTo(20, h / 2); ctx.lineTo(w - 20, h / 2);
+  ctx.stroke();
+
+  if (total < 1) {
+    return; // nobody on the board - don't plot a meaningless COP
+  }
+
+  // normalized -1..1: right-vs-left, top-vs-bottom
+  const x = ((tr + br) - (tl + bl)) / total;
+  const y = ((tl + tr) - (bl + br)) / total;
+
+  const px = w / 2 + x * (w / 2 - 30);
+  const py = h / 2 - y * (h / 2 - 30);
+
+  ctx.fillStyle = '#4ade80';
+  ctx.beginPath();
+  ctx.arc(px, py, 10, 0, 2 * Math.PI);
+  ctx.fill();
+}
+
+function connect() {
+  const ws = new WebSocket('ws://' + location.host + '/ws');
+
+  ws.onopen = () => {
+    statusEl.textContent = 'connected';
+    statusEl.className = 'ok';
+  };
+  ws.onclose = () => {
+    statusEl.textContent = 'disconnected - retrying…';
+    statusEl.className = 'bad';
+    setTimeout(connect, 1000);
+  };
+  ws.onerror = () => ws.close();
+
+  ws.onmessage = (ev) => {
+    let s;
+    try { s = JSON.parse(ev.data); } catch { return; }
+    if (!s.kg_valid) {
+      els.tl.textContent = els.tr.textContent = els.bl.textContent = els.br.textContent = 'n/a';
+      els.total.textContent = 'uncalibrated';
+      return;
+    }
+    els.tl.textContent = fmt(s.tl_kg);
+    els.tr.textContent = fmt(s.tr_kg);
+    els.bl.textContent = fmt(s.bl_kg);
+    els.br.textContent = fmt(s.br_kg);
+    const total = s.tl_kg + s.tr_kg + s.bl_kg + s.br_kg;
+    els.total.textContent = fmt(total);
+    drawCOP(s.tl_kg, s.tr_kg, s.bl_kg, s.br_kg, total);
+  };
+}
+
+connect();
+</script>
+</body>
+</html>

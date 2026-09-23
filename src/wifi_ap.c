@@ -6,9 +6,26 @@
 #include "esp_netif.h"
 #include "esp_event.h"
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "nvs_flash.h"
 
 static const char *TAG = "wifi_ap";
+
+static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data)
+{
+    (void)arg;
+    (void)base;
+    if (id == WIFI_EVENT_AP_STACONNECTED) {
+        wifi_event_ap_staconnected_t *e = (wifi_event_ap_staconnected_t *)data;
+        ESP_LOGI(TAG, "Station " MACSTR " associated (aid=%d)", MAC2STR(e->mac), e->aid);
+    } else if (id == WIFI_EVENT_AP_STADISCONNECTED) {
+        wifi_event_ap_stadisconnected_t *e = (wifi_event_ap_stadisconnected_t *)data;
+        // Common reasons: 2 = auth expired, 15 = 4-way handshake timeout,
+        // 23/24 = IEEE 802.1X/PSK failure - a 15 here usually means BT/WiFi
+        // radio coexistence starved the handshake, not an actually-wrong password.
+        ESP_LOGW(TAG, "Station " MACSTR " disconnected, reason=%d", MAC2STR(e->mac), e->reason);
+    }
+}
 
 esp_err_t wifi_ap_start(const char *ssid, const char *password)
 {
@@ -39,6 +56,8 @@ esp_err_t wifi_ap_start(const char *ssid, const char *password)
     if (strlen(password) == 0) {
         wifi_cfg.ap.authmode = WIFI_AUTH_OPEN;
     }
+
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler, NULL, NULL));
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_cfg));

@@ -1,7 +1,11 @@
 #include <stdio.h>
 
+#include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "ssd1306.h"
 #include "wifi_ap.h"
 #include "ws_server.h"
 #include "wiimote_bt.h"
@@ -11,6 +15,45 @@ static const char *TAG = "main";
 // Change these before flashing, or move to Kconfig/NVS later.
 #define WIFI_AP_SSID "WiiBalanceBoardGate"
 #define WIFI_AP_PASSWORD "balanceboard"
+
+// Heltec WiFi LoRa32 V2's PRG button, wired active-low with an external pull-up.
+// Doubles as a tare ("zero out the current load") button for the balance board.
+#define TARE_BUTTON_GPIO GPIO_NUM_0
+
+// Redraw the live weight rows at most this often - they arrive at ~100Hz,
+// far faster than the OLED (and I2C bus) need to be driven.
+#define SAMPLE_REDRAW_INTERVAL_US (200 * 1000)
+#define TARE_MSG_DURATION_US (2 * 1000 * 1000)
+
+static wiimote_bt_state_t s_bt_state = WIIMOTE_BT_SCANNING;
+static int64_t s_last_redraw_us = 0;
+static int64_t s_tare_msg_until_us = 0;
+
+static const char *bt_state_text(wiimote_bt_state_t state)
+{
+    switch (state) {
+    case WIIMOTE_BT_SCANNING:   return "BT: SCANNING";
+    case WIIMOTE_BT_CONNECTING: return "BT: CONNECTING";
+    case WIIMOTE_BT_HANDSHAKE:  return "BT: HANDSHAKE";
+    case WIIMOTE_BT_STREAMING:  return "BT: STREAMING";
+    default:                    return "BT: -";
+    }
+}
+
+static void redraw_header(void)
+{
+    char line[22];
+    snprintf(line, sizeof(line), "WIFI AP  C:%d", ws_server_client_count());
+    ssd1306_draw_text(0, 0, line);
+    ssd1306_draw_text(0, 1, bt_state_text(s_bt_state));
+    ssd1306_flush();
+}
+
+static void on_bt_state(wiimote_bt_state_t state)
+{
+    s_bt_state = state;
+    redraw_header();
+}
 
 static void on_sample(const wii_bb_sample_t *s)
 {
@@ -27,13 +70,76 @@ static void on_sample(const wii_bb_sample_t *s)
     if (n > 0) {
         ws_server_broadcast(json, (size_t)n);
     }
+
+    int64_t now = esp_timer_get_time();
+    if (now - s_last_redraw_us < SAMPLE_REDRAW_INTERVAL_US) {
+        return;
+    }
+    s_last_redraw_us = now;
+
+    char line[22];
+    if (s->kg_valid) {
+        snprintf(line, sizeof(line), "TL%5.1f TR%5.1f", s->top_left_kg, s->top_right_kg);
+        ssd1306_draw_text(0, 3, line);
+        snprintf(line, sizeof(line), "BL%5.1f BR%5.1f", s->bottom_left_kg, s->bottom_right_kg);
+        ssd1306_draw_text(0, 4, line);
+        float total = s->top_left_kg + s->top_right_kg + s->bottom_left_kg + s->bottom_right_kg;
+        snprintf(line, sizeof(line), "TOTAL: %6.1f KG", total);
+        ssd1306_draw_text(0, 6, line);
+    } else {
+        ssd1306_draw_text(0, 3, "UNCALIBRATED");
+    }
+
+    if (s_tare_msg_until_us && now >= s_tare_msg_until_us) {
+        ssd1306_draw_text(0, 2, "                    "); // blank the row
+        s_tare_msg_until_us = 0;
+    }
+    ssd1306_flush();
+}
+
+static void tare_button_task(void *arg)
+{
+    (void)arg;
+    gpio_config_t cfg = {
+        .pin_bit_mask = 1ULL << TARE_BUTTON_GPIO,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+    };
+    gpio_config(&cfg);
+
+    bool was_pressed = false;
+    while (1) {
+        bool pressed = gpio_get_level(TARE_BUTTON_GPIO) == 0;
+        if (pressed && !was_pressed) {
+            vTaskDelay(pdMS_TO_TICKS(30)); // debounce
+            if (gpio_get_level(TARE_BUTTON_GPIO) == 0) {
+                ESP_LOGI(TAG, "Tare button pressed");
+                wiimote_bt_tare();
+                ssd1306_draw_text(0, 2, "TARE SET");
+                ssd1306_flush();
+                s_tare_msg_until_us = esp_timer_get_time() + TARE_MSG_DURATION_US;
+            }
+        }
+        was_pressed = pressed;
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
 }
 
 void app_main(void)
 {
     ESP_LOGI(TAG, "WiiBalanceBoardGate starting");
 
+    esp_err_t disp_err = ssd1306_init();
+    if (disp_err == ESP_OK) {
+        ssd1306_draw_text(0, 0, "WIFI AP  C:0");
+        ssd1306_draw_text(0, 1, "BT: SCANNING");
+        ssd1306_flush();
+    } else {
+        ESP_LOGW(TAG, "No display (or init failed) - continuing without it");
+    }
+
     ESP_ERROR_CHECK(wifi_ap_start(WIFI_AP_SSID, WIFI_AP_PASSWORD));
     ESP_ERROR_CHECK(ws_server_start());
-    wiimote_bt_start(on_sample);
+    wiimote_bt_start(on_sample, on_bt_state);
+    xTaskCreate(tare_button_task, "tare_btn", 2048, NULL, 5, NULL);
 }

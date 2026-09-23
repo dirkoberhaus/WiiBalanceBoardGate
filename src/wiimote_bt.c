@@ -1,5 +1,6 @@
 #include "wiimote_bt.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "esp_bt.h"
@@ -31,7 +32,25 @@ static wbt_state_t s_state = WBT_SCANNING;
 static wii_bb_calib_t s_calib;
 static uint32_t s_seq = 0;
 static wiimote_bt_sample_cb_t s_sample_cb = NULL;
+static wiimote_bt_state_cb_t s_state_cb = NULL;
 static esp_hidh_dev_t *s_dev = NULL;
+
+// Tare: subtracts whatever was on the board at the moment of the request from
+// every corner's kg reading from then on, like a kitchen scale's tare button.
+static volatile bool s_tare_requested = false;
+static float s_tare_kg[4] = {0}; // top_left, top_right, bottom_left, bottom_right
+
+typedef struct {
+    wiimote_bt_sample_cb_t sample_cb;
+    wiimote_bt_state_cb_t state_cb;
+} bt_init_args_t;
+
+static void notify_state(wiimote_bt_state_t state)
+{
+    if (s_state_cb) {
+        s_state_cb(state);
+    }
+}
 
 static void send_status_request(esp_hidh_dev_t *dev)
 {
@@ -70,6 +89,7 @@ static void start_scan(void)
     s_state = WBT_SCANNING;
     s_dev = NULL;
     memset(&s_calib, 0, sizeof(s_calib));
+    notify_state(WIIMOTE_BT_SCANNING);
     ESP_LOGI(TAG, "Scanning for a Wii Balance Board...");
     // ~15 * 1.28s inquiry window; GAP keeps reporting ESP_BT_GAP_DISC_RES_EVT
     // for each device seen until this elapses or we cancel it ourselves.
@@ -101,6 +121,7 @@ static void gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param)
         }
         ESP_LOGI(TAG, "Found '%s', connecting...", name);
         s_state = WBT_OPENING;
+        notify_state(WIIMOTE_BT_CONNECTING);
         esp_bt_gap_cancel_discovery();
         esp_hidh_dev_open(param->disc_res.bda, ESP_HID_TRANSPORT_BT, 0);
         return;
@@ -129,6 +150,7 @@ static void hidh_cb(void *handler_args, esp_event_base_t base, int32_t id, void 
         ESP_LOGI(TAG, "Connected, requesting status");
         s_dev = param->open.dev;
         s_state = WBT_WAIT_STATUS;
+        notify_state(WIIMOTE_BT_HANDSHAKE);
         send_status_request(s_dev);
         break;
 
@@ -173,10 +195,31 @@ static void hidh_cb(void *handler_args, esp_event_base_t base, int32_t id, void 
             ESP_LOGI(TAG, "Calibration %s", s_calib.valid ? "OK" : "INVALID (weight will be uncalibrated)");
             send_set_report_mode(dev, 0x34);
             s_state = WBT_STREAMING;
+            notify_state(WIIMOTE_BT_STREAMING);
+            ESP_LOGI(TAG, "Streaming started");
         } else if (report_id == 0x34 && s_state == WBT_STREAMING) {
             wii_bb_sample_t sample = {0};
             wiimote_bb_parse_report(data, len, &s_calib, &sample);
             sample.seq = ++s_seq;
+            if (sample.kg_valid) {
+                if (s_tare_requested) {
+                    s_tare_kg[0] = sample.top_left_kg;
+                    s_tare_kg[1] = sample.top_right_kg;
+                    s_tare_kg[2] = sample.bottom_left_kg;
+                    s_tare_kg[3] = sample.bottom_right_kg;
+                    s_tare_requested = false;
+                    ESP_LOGI(TAG, "Tare captured: tl=%.1f tr=%.1f bl=%.1f br=%.1f kg", s_tare_kg[0],
+                             s_tare_kg[1], s_tare_kg[2], s_tare_kg[3]);
+                }
+                sample.top_left_kg -= s_tare_kg[0];
+                sample.top_right_kg -= s_tare_kg[1];
+                sample.bottom_left_kg -= s_tare_kg[2];
+                sample.bottom_right_kg -= s_tare_kg[3];
+            }
+            if (sample.seq % 100 == 1) {
+                ESP_LOGI(TAG, "sample #%lu tl=%.1f tr=%.1f bl=%.1f br=%.1f kg", (unsigned long)sample.seq,
+                         sample.top_left_kg, sample.top_right_kg, sample.bottom_left_kg, sample.bottom_right_kg);
+            }
             if (s_sample_cb) {
                 s_sample_cb(&sample);
             }
@@ -201,7 +244,10 @@ static void hidh_cb(void *handler_args, esp_event_base_t base, int32_t id, void 
 
 static void bt_init_task(void *arg)
 {
-    s_sample_cb = (wiimote_bt_sample_cb_t)arg;
+    bt_init_args_t *args = (bt_init_args_t *)arg;
+    s_sample_cb = args->sample_cb;
+    s_state_cb = args->state_cb;
+    free(args);
 
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_bt_controller_init(&bt_cfg));
@@ -224,7 +270,15 @@ static void bt_init_task(void *arg)
     vTaskDelete(NULL);
 }
 
-void wiimote_bt_start(wiimote_bt_sample_cb_t cb)
+void wiimote_bt_start(wiimote_bt_sample_cb_t sample_cb, wiimote_bt_state_cb_t state_cb)
 {
-    xTaskCreate(bt_init_task, "wbt_init", 4096, (void *)cb, 5, NULL);
+    bt_init_args_t *args = malloc(sizeof(bt_init_args_t));
+    args->sample_cb = sample_cb;
+    args->state_cb = state_cb;
+    xTaskCreate(bt_init_task, "wbt_init", 4096, args, 5, NULL);
+}
+
+void wiimote_bt_tare(void)
+{
+    s_tare_requested = true;
 }

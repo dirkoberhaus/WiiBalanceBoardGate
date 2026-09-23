@@ -4,26 +4,20 @@
 
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "index_html.h"
 
 static const char *TAG = "ws_server";
 
-#define MAX_CLIENTS 4
+// esp_http_server reserves 3 sockets for itself out of CONFIG_LWIP_MAX_SOCKETS
+// (default 10) - 7 is the max we're allowed to configure here.
+#define MAX_SOCKETS 7
 
 static httpd_handle_t s_server = NULL;
-static int s_client_fds[MAX_CLIENTS];
 
 static esp_err_t ws_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_GET) {
-        // Handshake just completed - remember this client's socket for broadcasts.
-        int fd = httpd_req_to_sockfd(req);
-        for (int i = 0; i < MAX_CLIENTS; i++) {
-            if (s_client_fds[i] == -1) {
-                s_client_fds[i] = fd;
-                ESP_LOGI(TAG, "Client connected (fd=%d)", fd);
-                break;
-            }
-        }
+        ESP_LOGI(TAG, "New WebSocket client");
         return ESP_OK;
     }
 
@@ -53,40 +47,73 @@ static const httpd_uri_t ws_uri = {
     .is_websocket = true,
 };
 
+static esp_err_t root_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/html");
+    return httpd_resp_send(req, index_html, sizeof(index_html) - 1);
+}
+
+static const httpd_uri_t root_uri = {
+    .uri = "/",
+    .method = HTTP_GET,
+    .handler = root_handler,
+};
+
 esp_err_t ws_server_start(void)
 {
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        s_client_fds[i] = -1;
-    }
-
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_open_sockets = MAX_CLIENTS + 1;
+    config.max_open_sockets = MAX_SOCKETS;
 
     esp_err_t err = httpd_start(&s_server, &config);
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = httpd_register_uri_handler(s_server, &root_uri);
     if (err != ESP_OK) {
         return err;
     }
     return httpd_register_uri_handler(s_server, &ws_uri);
 }
 
+// Fills `out_fds` (capacity MAX_SOCKETS) with the fds that are actual live
+// WebSocket clients, returns how many. The full session list includes plain
+// HTTP sockets (e.g. someone mid-load of "/") too, which we filter out.
+static size_t list_ws_clients(int *out_fds)
+{
+    int fds[MAX_SOCKETS];
+    size_t n = MAX_SOCKETS;
+    if (!s_server || httpd_get_client_list(s_server, &n, fds) != ESP_OK) {
+        return 0;
+    }
+    size_t count = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (httpd_ws_get_fd_info(s_server, fds[i]) == HTTPD_WS_CLIENT_WEBSOCKET) {
+            out_fds[count++] = fds[i];
+        }
+    }
+    return count;
+}
+
+int ws_server_client_count(void)
+{
+    int fds[MAX_SOCKETS];
+    return (int)list_ws_clients(fds);
+}
+
 void ws_server_broadcast(const char *data, size_t len)
 {
-    if (!s_server) {
-        return;
-    }
+    int fds[MAX_SOCKETS];
+    size_t n = list_ws_clients(fds);
+
     httpd_ws_frame_t frame = {
         .type = HTTPD_WS_TYPE_TEXT,
         .payload = (uint8_t *)data,
         .len = len,
     };
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (s_client_fds[i] == -1) {
-            continue;
-        }
-        esp_err_t err = httpd_ws_send_frame_async(s_server, s_client_fds[i], &frame);
+    for (size_t i = 0; i < n; i++) {
+        esp_err_t err = httpd_ws_send_frame_async(s_server, fds[i], &frame);
         if (err != ESP_OK) {
-            ESP_LOGI(TAG, "Client fd=%d gone, dropping", s_client_fds[i]);
-            s_client_fds[i] = -1;
+            ESP_LOGW(TAG, "Send to fd=%d failed: %s", fds[i], esp_err_to_name(err));
         }
     }
 }
