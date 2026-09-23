@@ -32,8 +32,21 @@
   #total .value { font-size: 2rem; font-weight: 700; }
   canvas {
     background: #1e2128; border-radius: 10px; display: block;
-    max-width: 100%;
+    max-width: 100%; touch-action: none;
   }
+  #hint {
+    font-size: 0.8rem; color: #9aa0a8; max-width: 420px; margin-top: 8px;
+  }
+  .controls {
+    max-width: 420px; margin-top: 14px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .controls button {
+    background: #1e2128; color: #e8e8ea; border: 1px solid #3a3f47;
+    border-radius: 8px; padding: 10px; font-size: 0.9rem;
+  }
+  .controls button.active { background: #4ade80; color: #14161a; border-color: #4ade80; }
+  .tolerance-row { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: #9aa0a8; }
+  .tolerance-row input { flex: 1; }
 </style>
 </head>
 <body>
@@ -50,6 +63,16 @@
   <div id="total"><div class="label">TOTAL</div><div class="value" id="total-val">– kg</div></div>
 
   <canvas id="cop" width="300" height="300"></canvas>
+  <div id="hint">Tippe ins Diagramm, um den Idealpunkt festzulegen.</div>
+
+  <div class="controls">
+    <button id="sound-toggle">🔇 Ton aktivieren</button>
+    <div class="tolerance-row">
+      <span>Toleranz</span>
+      <input type="range" id="tolerance" min="5" max="40" value="15">
+      <span id="tolerance-val">15%</span>
+    </div>
+  </div>
 
 <script>
 const statusEl = document.getElementById('status');
@@ -62,12 +85,34 @@ const els = {
 };
 const canvas = document.getElementById('cop');
 const ctx = canvas.getContext('2d');
+const soundToggle = document.getElementById('sound-toggle');
+const toleranceInput = document.getElementById('tolerance');
+const toleranceVal = document.getElementById('tolerance-val');
+
+// Board area in canvas pixels, shared by drawing and click-to-normalized math.
+const PAD = 30;
+
+let idealPoint = null;       // {x, y} normalized -1..1, set by tapping the diagram
+let tolerance = 0.15;        // normalized radius; audio is silent inside this
+let lastCOP = null;          // {x, y, total} from the latest sample
 
 function fmt(kg) {
   return kg.toFixed(1) + ' kg';
 }
 
-function drawCOP(tl, tr, bl, br, total) {
+function toCanvas(x, y) {
+  const w = canvas.width, h = canvas.height;
+  return [w / 2 + x * (w / 2 - PAD), h / 2 - y * (h / 2 - PAD)];
+}
+
+function fromCanvas(px, py) {
+  const w = canvas.width, h = canvas.height;
+  const x = (px - w / 2) / (w / 2 - PAD);
+  const y = -(py - h / 2) / (h / 2 - PAD);
+  return [Math.max(-1, Math.min(1, x)), Math.max(-1, Math.min(1, y))];
+}
+
+function draw() {
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0, 0, w, h);
 
@@ -80,21 +125,112 @@ function drawCOP(tl, tr, bl, br, total) {
   ctx.moveTo(20, h / 2); ctx.lineTo(w - 20, h / 2);
   ctx.stroke();
 
-  if (total < 1) {
+  if (idealPoint) {
+    const [ix, iy] = toCanvas(idealPoint.x, idealPoint.y);
+    const toleranceRadiusPx = tolerance * (w / 2 - PAD);
+
+    ctx.strokeStyle = '#4ade80';
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(ix, iy, toleranceRadiusPx, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.strokeStyle = '#4ade80';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(ix - 8, iy); ctx.lineTo(ix + 8, iy);
+    ctx.moveTo(ix, iy - 8); ctx.lineTo(ix, iy + 8);
+    ctx.stroke();
+  }
+
+  if (!lastCOP || lastCOP.total < 1) {
     return; // nobody on the board - don't plot a meaningless COP
   }
 
-  // normalized -1..1: right-vs-left, top-vs-bottom
-  const x = ((tr + br) - (tl + bl)) / total;
-  const y = ((tl + tr) - (bl + br)) / total;
-
-  const px = w / 2 + x * (w / 2 - 30);
-  const py = h / 2 - y * (h / 2 - 30);
-
-  ctx.fillStyle = '#4ade80';
+  const [px, py] = toCanvas(lastCOP.x, lastCOP.y);
+  ctx.fillStyle = '#60a5fa';
   ctx.beginPath();
-  ctx.arc(px, py, 10, 0, 2 * Math.PI);
+  ctx.arc(px, py, 9, 0, 2 * Math.PI);
   ctx.fill();
+}
+
+canvas.addEventListener('pointerdown', (ev) => {
+  const rect = canvas.getBoundingClientRect();
+  const px = (ev.clientX - rect.left) * (canvas.width / rect.width);
+  const py = (ev.clientY - rect.top) * (canvas.height / rect.height);
+  const [x, y] = fromCanvas(px, py);
+  idealPoint = { x, y };
+  document.getElementById('hint').textContent =
+    'Idealpunkt gesetzt - erneut tippen, um ihn zu verschieben.';
+  draw();
+});
+
+toleranceInput.addEventListener('input', () => {
+  tolerance = toleranceInput.value / 100;
+  toleranceVal.textContent = toleranceInput.value + '%';
+  draw();
+});
+
+// --- Audio feedback -------------------------------------------------------
+// Silent while inside the tolerance ring; once outside, a tone pans toward
+// the direction of the error and gets louder/higher the further off you are.
+// Needs a user gesture to start (iOS/browser autoplay policy).
+
+let audioCtx = null, oscillator = null, gainNode = null, pannerNode = null;
+let soundEnabled = false;
+
+function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  oscillator = audioCtx.createOscillator();
+  gainNode = audioCtx.createGain();
+  pannerNode = audioCtx.createStereoPanner();
+
+  oscillator.type = 'sine';
+  oscillator.frequency.value = 300;
+  gainNode.gain.value = 0;
+
+  oscillator.connect(gainNode).connect(pannerNode).connect(audioCtx.destination);
+  oscillator.start();
+}
+
+soundToggle.addEventListener('click', () => {
+  if (!audioCtx) {
+    initAudio();
+  }
+  soundEnabled = !soundEnabled;
+  if (!soundEnabled && gainNode) {
+    gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+  }
+  soundToggle.textContent = soundEnabled ? '🔊 Ton an' : '🔇 Ton aktivieren';
+  soundToggle.classList.toggle('active', soundEnabled);
+});
+
+function updateAudio(cop) {
+  if (!soundEnabled || !gainNode) {
+    return;
+  }
+  if (!idealPoint || !cop || cop.total < 1) {
+    gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+    return;
+  }
+
+  const dx = cop.x - idealPoint.x;
+  const dy = cop.y - idealPoint.y;
+  const dist = Math.hypot(dx, dy);
+
+  const t = audioCtx.currentTime;
+  if (dist <= tolerance) {
+    gainNode.gain.setTargetAtTime(0, t, 0.05);
+    return;
+  }
+
+  // How far past the tolerance ring, saturating at "very off" = 1.0.
+  const over = Math.min((dist - tolerance) / 0.6, 1);
+  gainNode.gain.setTargetAtTime(0.05 + 0.35 * over, t, 0.05);
+  oscillator.frequency.setTargetAtTime(280 + 500 * over, t, 0.05);
+  pannerNode.pan.setTargetAtTime(Math.max(-1, Math.min(1, dx * 2)), t, 0.05);
 }
 
 function connect() {
@@ -117,6 +253,8 @@ function connect() {
     if (!s.kg_valid) {
       els.tl.textContent = els.tr.textContent = els.bl.textContent = els.br.textContent = 'n/a';
       els.total.textContent = 'uncalibrated';
+      lastCOP = null;
+      draw();
       return;
     }
     els.tl.textContent = fmt(s.tl_kg);
@@ -125,10 +263,18 @@ function connect() {
     els.br.textContent = fmt(s.br_kg);
     const total = s.tl_kg + s.tr_kg + s.bl_kg + s.br_kg;
     els.total.textContent = fmt(total);
-    drawCOP(s.tl_kg, s.tr_kg, s.bl_kg, s.br_kg, total);
+
+    lastCOP = {
+      x: total >= 1 ? ((s.tr_kg + s.br_kg) - (s.tl_kg + s.bl_kg)) / total : 0,
+      y: total >= 1 ? ((s.tl_kg + s.tr_kg) - (s.bl_kg + s.br_kg)) / total : 0,
+      total,
+    };
+    draw();
+    updateAudio(lastCOP);
   };
 }
 
+draw();
 connect();
 </script>
 </body>
