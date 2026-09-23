@@ -262,7 +262,7 @@ static void bt_init_task(void *arg)
 
     esp_hidh_config_t hidh_cfg = {
         .callback = hidh_cb,
-        .event_stack_size = 4096,
+        .event_stack_size = 6144, // sample_cb draws to the display, which needs some headroom
         .callback_arg = NULL,
     };
     ESP_ERROR_CHECK(esp_hidh_init(&hidh_cfg));

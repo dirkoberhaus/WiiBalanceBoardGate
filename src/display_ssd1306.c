@@ -1,14 +1,18 @@
-#include "ssd1306.h"
+#ifdef DISPLAY_SSD1306
 
+#include "display.h"
+
+#include <stdbool.h>
 #include <string.h>
 
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
+#include "font5x7.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-static const char *TAG = "ssd1306";
+static const char *TAG = "display_ssd1306";
 
 // Heltec WiFi LoRa32 V2 pinout. Change these if your board differs.
 #define PIN_SDA GPIO_NUM_4
@@ -28,74 +32,13 @@ static i2c_master_bus_handle_t s_bus = NULL;
 static i2c_master_dev_handle_t s_dev = NULL;
 static uint8_t s_fb[WIDTH * PAGES];
 
-// 5x7 font, columns are bit0=top pixel..bit6=bottom pixel. Covers just what
-// the status screen needs: space, '-', '.', ':', digits, uppercase letters.
-typedef struct {
-    char c;
-    uint8_t col[5];
-} glyph_t;
-
-static const glyph_t kFont[] = {
-    {' ', {0x00, 0x00, 0x00, 0x00, 0x00}},
-    {'-', {0x08, 0x08, 0x08, 0x08, 0x08}},
-    {'.', {0x00, 0x60, 0x60, 0x00, 0x00}},
-    {':', {0x00, 0x36, 0x36, 0x00, 0x00}},
-    {'0', {0x3E, 0x51, 0x49, 0x45, 0x3E}},
-    {'1', {0x00, 0x42, 0x7F, 0x40, 0x00}},
-    {'2', {0x42, 0x61, 0x51, 0x49, 0x46}},
-    {'3', {0x21, 0x41, 0x45, 0x4B, 0x31}},
-    {'4', {0x18, 0x14, 0x12, 0x7F, 0x10}},
-    {'5', {0x27, 0x45, 0x45, 0x45, 0x39}},
-    {'6', {0x3C, 0x4A, 0x49, 0x49, 0x30}},
-    {'7', {0x01, 0x71, 0x09, 0x05, 0x03}},
-    {'8', {0x36, 0x49, 0x49, 0x49, 0x36}},
-    {'9', {0x06, 0x49, 0x49, 0x29, 0x1E}},
-    {'A', {0x7E, 0x11, 0x11, 0x11, 0x7E}},
-    {'B', {0x7F, 0x49, 0x49, 0x49, 0x36}},
-    {'C', {0x3E, 0x41, 0x41, 0x41, 0x22}},
-    {'D', {0x7F, 0x41, 0x41, 0x22, 0x1C}},
-    {'E', {0x7F, 0x49, 0x49, 0x49, 0x41}},
-    {'F', {0x7F, 0x09, 0x09, 0x09, 0x01}},
-    {'G', {0x3E, 0x41, 0x49, 0x49, 0x7A}},
-    {'H', {0x7F, 0x08, 0x08, 0x08, 0x7F}},
-    {'I', {0x00, 0x41, 0x7F, 0x41, 0x00}},
-    {'J', {0x20, 0x40, 0x41, 0x3F, 0x01}},
-    {'K', {0x7F, 0x08, 0x14, 0x22, 0x41}},
-    {'L', {0x7F, 0x40, 0x40, 0x40, 0x40}},
-    {'M', {0x7F, 0x02, 0x0C, 0x02, 0x7F}},
-    {'N', {0x7F, 0x04, 0x08, 0x10, 0x7F}},
-    {'O', {0x3E, 0x41, 0x41, 0x41, 0x3E}},
-    {'P', {0x7F, 0x09, 0x09, 0x09, 0x06}},
-    {'Q', {0x3E, 0x41, 0x51, 0x21, 0x5E}},
-    {'R', {0x7F, 0x09, 0x19, 0x29, 0x46}},
-    {'S', {0x46, 0x49, 0x49, 0x49, 0x31}},
-    {'T', {0x01, 0x01, 0x7F, 0x01, 0x01}},
-    {'U', {0x3F, 0x40, 0x40, 0x40, 0x3F}},
-    {'V', {0x1F, 0x20, 0x40, 0x20, 0x1F}},
-    {'W', {0x3F, 0x40, 0x38, 0x40, 0x3F}},
-    {'X', {0x63, 0x14, 0x08, 0x14, 0x63}},
-    {'Y', {0x07, 0x08, 0x70, 0x08, 0x07}},
-    {'Z', {0x61, 0x51, 0x49, 0x45, 0x43}},
-};
-#define FONT_LEN (sizeof(kFont) / sizeof(kFont[0]))
-
-static const uint8_t *glyph_for(char c)
-{
-    for (size_t i = 0; i < FONT_LEN; i++) {
-        if (kFont[i].c == c) {
-            return kFont[i].col;
-        }
-    }
-    return NULL; // unsupported char -> caller leaves the cell blank
-}
-
 static esp_err_t write_cmd(uint8_t cmd)
 {
     uint8_t buf[2] = {0x00, cmd};
     return i2c_master_transmit(s_dev, buf, sizeof(buf), 100);
 }
 
-esp_err_t ssd1306_init(void)
+esp_err_t display_init(void)
 {
     gpio_config_t vext_cfg = {
         .pin_bit_mask = 1ULL << PIN_VEXT,
@@ -165,24 +108,24 @@ esp_err_t ssd1306_init(void)
         }
     }
 
-    ssd1306_clear();
-    ssd1306_flush();
+    display_clear();
+    display_flush();
     ESP_LOGI(TAG, "Display initialized");
     return ESP_OK;
 }
 
-void ssd1306_clear(void)
+void display_clear(void)
 {
     memset(s_fb, 0, sizeof(s_fb));
 }
 
-void ssd1306_draw_text(uint8_t col, uint8_t row, const char *text)
+void display_draw_text(uint8_t col, uint8_t row, const char *text)
 {
     if (row >= ROWS) {
         return;
     }
     while (*text && col < COLS) {
-        const uint8_t *glyph = glyph_for(*text);
+        const unsigned char *glyph = font5x7_glyph(*text);
         uint8_t *cell = &s_fb[row * WIDTH + col * 6];
         if (glyph) {
             memcpy(cell, glyph, 5);
@@ -195,7 +138,18 @@ void ssd1306_draw_text(uint8_t col, uint8_t row, const char *text)
     }
 }
 
-void ssd1306_flush(void)
+int16_t display_width(void) { return WIDTH; }
+int16_t display_height(void) { return HEIGHT; }
+
+bool display_has_graphics(void) { return false; }
+// No room for a graphics panel next to the status text on this tiny screen -
+// these exist only to satisfy display.h; display_has_graphics() means
+// callers should never actually invoke them.
+void display_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, bool on) { (void)x; (void)y; (void)w; (void)h; (void)on; }
+void display_draw_rect(int16_t x, int16_t y, int16_t w, int16_t h, bool on) { (void)x; (void)y; (void)w; (void)h; (void)on; }
+void display_fill_circle(int16_t cx, int16_t cy, int16_t r, bool on) { (void)cx; (void)cy; (void)r; (void)on; }
+
+void display_flush(void)
 {
     write_cmd(0x21); // set column address range
     write_cmd(0x00);
@@ -214,3 +168,5 @@ void ssd1306_flush(void)
         }
     }
 }
+
+#endif // DISPLAY_SSD1306
