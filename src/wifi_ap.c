@@ -42,6 +42,17 @@ esp_err_t wifi_ap_start(const char *ssid, const char *password)
 
     wifi_init_config_t init_cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&init_cfg));
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+
+    // Suffix the SSID with part of this chip's own MAC so multiple gateways
+    // flashed from the same firmware don't all broadcast an identical,
+    // indistinguishable network name. Uses the ESP32's address (stable from
+    // boot) rather than the balance board's (only known after it connects,
+    // and would change if a different board gets paired to this gateway).
+    uint8_t mac[6];
+    ESP_ERROR_CHECK(esp_wifi_get_mac(WIFI_IF_AP, mac));
+    char full_ssid[33];
+    snprintf(full_ssid, sizeof(full_ssid), "%s-%02X%02X%02X", ssid, mac[3], mac[4], mac[5]);
 
     wifi_config_t wifi_cfg = {
         .ap = {
@@ -50,8 +61,8 @@ esp_err_t wifi_ap_start(const char *ssid, const char *password)
             .authmode = WIFI_AUTH_WPA2_PSK,
         },
     };
-    strncpy((char *)wifi_cfg.ap.ssid, ssid, sizeof(wifi_cfg.ap.ssid) - 1);
-    wifi_cfg.ap.ssid_len = strlen(ssid);
+    strncpy((char *)wifi_cfg.ap.ssid, full_ssid, sizeof(wifi_cfg.ap.ssid) - 1);
+    wifi_cfg.ap.ssid_len = strlen(full_ssid);
     strncpy((char *)wifi_cfg.ap.password, password, sizeof(wifi_cfg.ap.password) - 1);
     if (strlen(password) == 0) {
         wifi_cfg.ap.authmode = WIFI_AUTH_OPEN;
@@ -59,10 +70,9 @@ esp_err_t wifi_ap_start(const char *ssid, const char *password)
 
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler, NULL, NULL));
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_cfg));
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    ESP_LOGI(TAG, "AP '%s' started, connect and browse to 192.168.4.1", ssid);
+    ESP_LOGI(TAG, "AP '%s' started, connect and browse to 192.168.4.1", full_ssid);
     return ESP_OK;
 }

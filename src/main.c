@@ -100,6 +100,12 @@ static void redraw_header(void)
     display_flush();
 }
 
+static void header_timer_cb(void *arg)
+{
+    (void)arg;
+    redraw_header();
+}
+
 static void on_bt_state(wiimote_bt_state_t state)
 {
     s_bt_state = state;
@@ -202,4 +208,17 @@ void app_main(void)
     ESP_ERROR_CHECK(ws_server_start());
     wiimote_bt_start(on_sample, on_bt_state);
     xTaskCreate(tare_button_task, "tare_btn", 2048, NULL, 5, NULL);
+
+    if (disp_err == ESP_OK) {
+        // The header (WiFi client count) otherwise only redraws on a BT
+        // state change, which usually happens before anyone opens the web
+        // page - without this it stays stuck showing the count from then.
+        const esp_timer_create_args_t header_timer_args = {
+            .callback = &header_timer_cb,
+            .name = "header_redraw",
+        };
+        esp_timer_handle_t header_timer;
+        ESP_ERROR_CHECK(esp_timer_create(&header_timer_args, &header_timer));
+        ESP_ERROR_CHECK(esp_timer_start_periodic(header_timer, 1000000)); // 1s
+    }
 }
