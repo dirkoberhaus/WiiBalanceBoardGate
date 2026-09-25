@@ -196,6 +196,10 @@ static void hidh_cb(void *handler_args, esp_event_base_t base, int32_t id, void 
             send_set_report_mode(dev, 0x34);
             s_state = WBT_STREAMING;
             notify_state(WIIMOTE_BT_STREAMING);
+            // Nobody's reliably standing on the board at the exact moment it
+            // finishes connecting, so zero it here automatically instead of
+            // requiring a tare-button press every single time it reconnects.
+            s_tare_requested = true;
             ESP_LOGI(TAG, "Streaming started");
         } else if (report_id == 0x34 && s_state == WBT_STREAMING) {
             wii_bb_sample_t sample = {0};
