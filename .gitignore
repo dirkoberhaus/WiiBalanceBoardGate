@@ -1,4 +1,6 @@
 .pio/
 .vscode/
+tools/*.png
 sdkconfig.*
 !sdkconfig.defaults
+.DS_Store

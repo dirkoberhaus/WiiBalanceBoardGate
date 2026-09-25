@@ -1,11 +1,13 @@
 #include "ws_server.h"
 
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "index_html.h"
+#include "wifi_ap.h"
 
 static const char *TAG = "ws_server";
 
@@ -60,6 +62,89 @@ static const httpd_uri_t root_uri = {
     .handler = root_handler,
 };
 
+// Minimal application/x-www-form-urlencoded percent-decoding, in place.
+static void url_decode(char *s)
+{
+    char *out = s;
+    while (*s) {
+        if (*s == '+') {
+            *out++ = ' ';
+            s++;
+        } else if (*s == '%' && s[1] && s[2]) {
+            char hex[3] = {s[1], s[2], '\0'};
+            *out++ = (char)strtol(hex, NULL, 16);
+            s += 3;
+        } else {
+            *out++ = *s++;
+        }
+    }
+    *out = '\0';
+}
+
+// POST body: "ssid=...&password=..." (application/x-www-form-urlencoded).
+// Saves the credentials and attempts to connect the station interface to
+// them right away - see wifi_sta_save_and_connect() for why this blocks.
+static esp_err_t wifi_sta_post_handler(httpd_req_t *req)
+{
+    char body[192];
+    int total = req->content_len;
+    if (total <= 0 || total >= (int)sizeof(body)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad request body");
+        return ESP_FAIL;
+    }
+    int received = 0;
+    while (received < total) {
+        int r = httpd_req_recv(req, body + received, total - received);
+        if (r <= 0) {
+            return ESP_FAIL;
+        }
+        received += r;
+    }
+    body[total] = '\0';
+
+    char ssid[33] = {0};
+    char password[65] = {0};
+    if (httpd_query_key_value(body, "ssid", ssid, sizeof(ssid)) != ESP_OK || ssid[0] == '\0') {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing ssid");
+        return ESP_FAIL;
+    }
+    httpd_query_key_value(body, "password", password, sizeof(password)); // absent = open network
+    url_decode(ssid);
+    url_decode(password);
+
+    char ip[16] = {0};
+    bool ok = wifi_sta_save_and_connect(ssid, password, ip, sizeof(ip));
+
+    char resp[64];
+    int n = snprintf(resp, sizeof(resp), "{\"ok\":%s,\"ip\":\"%s\"}", ok ? "true" : "false", ip);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, resp, n);
+    return ESP_OK;
+}
+
+static const httpd_uri_t wifi_sta_uri = {
+    .uri = "/wifi-sta",
+    .method = HTTP_POST,
+    .handler = wifi_sta_post_handler,
+};
+
+static esp_err_t wifi_scan_get_handler(httpd_req_t *req)
+{
+    char json[1024];
+    if (!wifi_sta_scan(json, sizeof(json))) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Scan failed");
+        return ESP_FAIL;
+    }
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, json, HTTPD_RESP_USE_STRLEN);
+}
+
+static const httpd_uri_t wifi_scan_uri = {
+    .uri = "/wifi-scan",
+    .method = HTTP_GET,
+    .handler = wifi_scan_get_handler,
+};
+
 esp_err_t ws_server_start(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -70,6 +155,14 @@ esp_err_t ws_server_start(void)
         return err;
     }
     err = httpd_register_uri_handler(s_server, &root_uri);
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = httpd_register_uri_handler(s_server, &wifi_sta_uri);
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = httpd_register_uri_handler(s_server, &wifi_scan_uri);
     if (err != ESP_OK) {
         return err;
     }

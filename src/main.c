@@ -22,6 +22,12 @@ static const char *TAG = "main";
 // Doubles as a tare ("zero out the current load") button for the balance board.
 #define TARE_BUTTON_GPIO GPIO_NUM_0
 
+// GPIO2 is the onboard LED on essentially every plain ESP32 DevKitC-style
+// board (and is unused/unrouted, so harmless, on the Heltec and TTGO boards
+// too) - lights it up as a simple "board is connected and streaming" signal
+// for setups without a display.
+#define STATUS_LED_GPIO GPIO_NUM_2
+
 // Redraw the live weight rows at most this often - they arrive at ~100Hz,
 // far faster than the OLED (and I2C bus) need to be driven.
 #define SAMPLE_REDRAW_INTERVAL_US (200 * 1000)
@@ -122,6 +128,7 @@ static void header_timer_cb(void *arg)
 static void on_bt_state(wiimote_bt_state_t state)
 {
     s_bt_state = state;
+    gpio_set_level(STATUS_LED_GPIO, state == WIIMOTE_BT_STREAMING ? 1 : 0);
     redraw_header();
 }
 
@@ -148,24 +155,20 @@ static void on_sample(const wii_bb_sample_t *s)
     s_last_redraw_us = now;
 
     bool gfx = display_has_graphics();
-    uint8_t total_row = gfx ? 7 : 6; // below the graphics panel vs. below the corner readout
 
+    // Deliberately no kg numbers shown on-device: this runs in youth sport
+    // contexts, where displaying someone's body weight where others might
+    // see it isn't appropriate. Only the graphical (relative) COP panel -
+    // not a numeric readout - conveys anything at all; that's all balance
+    // training actually needs. Same reasoning applies to the web UI, where
+    // the numbers live behind an explicit "show details" toggle instead of
+    // being on the main screen.
+    uint8_t status_row = gfx ? 7 : 3; // below the graphics panel vs. its own row
     xSemaphoreTake(s_display_mutex, portMAX_DELAY);
-    char line[22];
     if (s->kg_valid) {
-        if (!gfx) {
-            // The graphics panel already shows this visually - no room (or
-            // need) for the per-corner numbers next to it on that screen.
-            snprintf(line, sizeof(line), "TL%5.1f TR%5.1f", s->top_left_kg, s->top_right_kg);
-            display_draw_text(0, 3, line);
-            snprintf(line, sizeof(line), "BL%5.1f BR%5.1f", s->bottom_left_kg, s->bottom_right_kg);
-            display_draw_text(0, 4, line);
-        }
-        float total = s->top_left_kg + s->top_right_kg + s->bottom_left_kg + s->bottom_right_kg;
-        snprintf(line, sizeof(line), "TOTAL: %6.1f KG", total);
-        display_draw_text(0, total_row, line);
+        display_draw_text(0, status_row, "                    ");
     } else {
-        display_draw_text(0, gfx ? total_row : 3, "UNCALIBRATED");
+        display_draw_text(0, status_row, "UNCALIBRATED");
     }
 
     if (s_tare_msg_until_us && now >= s_tare_msg_until_us) {
@@ -213,6 +216,13 @@ void app_main(void)
 
     s_display_mutex = xSemaphoreCreateMutex();
 
+    gpio_config_t led_cfg = {
+        .pin_bit_mask = 1ULL << STATUS_LED_GPIO,
+        .mode = GPIO_MODE_OUTPUT,
+    };
+    gpio_config(&led_cfg);
+    gpio_set_level(STATUS_LED_GPIO, 0);
+
     esp_err_t disp_err = display_init();
     if (disp_err == ESP_OK) {
         display_draw_text(0, 0, "WIFI AP  C:0");
@@ -224,6 +234,7 @@ void app_main(void)
     }
 
     ESP_ERROR_CHECK(wifi_ap_start(WIFI_AP_SSID, WIFI_AP_PASSWORD));
+    wifi_sta_try_saved(); // if a phone hotspot was saved before, try it in the background
     ESP_ERROR_CHECK(dns_server_start()); // lets any hostname (e.g. http://board/) resolve, not just the IP
     ESP_ERROR_CHECK(ws_server_start());
     wiimote_bt_start(on_sample, on_bt_state);

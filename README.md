@@ -94,7 +94,13 @@ while True:
    `WiiBalanceBoardGate-XXXXXX` (the suffix is unique per chip, so multiple
    gateways don't collide) with password `balanceboard` — change both in
    `src/main.c` (`WIFI_AP_SSID` / `WIFI_AP_PASSWORD`) before flashing if you
-   want something else.
+   want something else. Since the SSID is only final after flashing (it
+   includes a per-chip suffix), generate a "scan to join" QR code for a
+   board once you know it, and print/stick it on the board:
+   ```sh
+   tools/wifi_qr.sh WiiBalanceBoardGate-XXXXXX balanceboard
+   ```
+   (needs `qrencode` - `brew install qrencode` / `apt install qrencode`)
 2. Press the little **SYNC** button in the Balance Board's battery
    compartment. The board only accepts a Bluetooth connection during the
    ~20s window after that press — this needs to happen every time, there's

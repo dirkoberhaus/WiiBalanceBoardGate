@@ -32,7 +32,7 @@
   #total .value { font-size: 2rem; font-weight: 700; }
   canvas {
     background: #1e2128; border-radius: 10px; display: block;
-    max-width: 100%; touch-action: none;
+    width: 100%; height: auto; aspect-ratio: 1 / 1; touch-action: none;
   }
   #hint {
     font-size: 0.8rem; color: #9aa0a8; max-width: 420px; margin-top: 8px;
@@ -47,20 +47,34 @@
   .controls button.active { background: #4ade80; color: #14161a; border-color: #4ade80; }
   .tolerance-row { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: #9aa0a8; }
   .tolerance-row input { flex: 1; }
+  details {
+    max-width: 420px; margin-top: 18px; border-top: 1px solid #3a3f47; padding-top: 10px;
+  }
+  details summary {
+    cursor: pointer; font-size: 0.85rem; color: #9aa0a8; user-select: none;
+  }
+  .form-row {
+    display: flex; flex-direction: column; gap: 8px; margin-top: 12px;
+  }
+  .form-row input[type="text"], .form-row input[type="password"] {
+    background: #1e2128; color: #e8e8ea; border: 1px solid #3a3f47;
+    border-radius: 8px; padding: 10px; font-size: 0.9rem;
+  }
+  .form-status {
+    font-size: 0.8rem; color: #9aa0a8; min-height: 1.2em;
+  }
+  .scan-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 10px; background: #1e2128; border: 1px solid #3a3f47;
+    border-radius: 8px; margin-top: 6px; cursor: pointer; font-size: 0.85rem;
+  }
+  .scan-item:active { background: #2a2f38; }
+  .scan-item .rssi { color: #9aa0a8; font-size: 0.75rem; }
 </style>
 </head>
 <body>
   <h1>WiiBalanceBoardGate</h1>
   <div id="status" class="bad">connecting…</div>
-
-  <div class="grid">
-    <div class="cell"><div class="label">TOP LEFT</div><div class="value" id="tl">–</div></div>
-    <div class="cell"><div class="label">TOP RIGHT</div><div class="value" id="tr">–</div></div>
-    <div class="cell"><div class="label">BOTTOM LEFT</div><div class="value" id="bl">–</div></div>
-    <div class="cell"><div class="label">BOTTOM RIGHT</div><div class="value" id="br">–</div></div>
-  </div>
-
-  <div id="total"><div class="label">TOTAL</div><div class="value" id="total-val">– kg</div></div>
 
   <canvas id="cop" width="300" height="300"></canvas>
   <div id="hint">Tippe ins Diagramm, um den Idealpunkt festzulegen.</div>
@@ -79,6 +93,30 @@
     </div>
   </div>
 
+  <details>
+    <summary>Gewichtswerte anzeigen (nicht standardmäßig sichtbar)</summary>
+    <div class="grid" style="margin-top: 12px;">
+      <div class="cell"><div class="label">TOP LEFT</div><div class="value" id="tl">–</div></div>
+      <div class="cell"><div class="label">TOP RIGHT</div><div class="value" id="tr">–</div></div>
+      <div class="cell"><div class="label">BOTTOM LEFT</div><div class="value" id="bl">–</div></div>
+      <div class="cell"><div class="label">BOTTOM RIGHT</div><div class="value" id="br">–</div></div>
+    </div>
+    <div id="total"><div class="label">TOTAL</div><div class="value" id="total-val">– kg</div></div>
+  </details>
+
+  <details>
+    <summary>WLAN: Handy-Hotspot verbinden (optional)</summary>
+    <div class="form-row">
+      <div class="form-status">Der eigene WLAN-Zugangspunkt dieses Geräts bleibt dabei immer bestehen - das hier ist nur ein zusätzlicher Uplink, damit dein Handy z.B. für Nachrichten/Internet gleichzeitig online bleibt.</div>
+      <button id="hotspot-scan">📶 Sichtbare WLANs anzeigen</button>
+      <div id="hotspot-scan-list"></div>
+      <input type="text" id="hotspot-ssid" placeholder="WLAN-Name (SSID) deines Hotspots" autocapitalize="off" autocorrect="off">
+      <input type="password" id="hotspot-pass" placeholder="Passwort">
+      <button id="hotspot-connect">Speichern &amp; verbinden</button>
+      <div class="form-status" id="hotspot-status"></div>
+    </div>
+  </details>
+
 <script>
 const statusEl = document.getElementById('status');
 const els = {
@@ -95,45 +133,52 @@ const audio3dCheckbox = document.getElementById('audio-3d');
 const toleranceInput = document.getElementById('tolerance');
 const toleranceVal = document.getElementById('tolerance-val');
 
-// Board area in canvas pixels, shared by drawing and click-to-normalized math.
-const PAD = 30;
-
 let idealPoint = null;       // {x, y} normalized -1..1, set by tapping the diagram
 let tolerance = 0.15;        // normalized radius; audio is silent inside this
 let lastCOP = null;          // {x, y, total} from the latest sample
+
+// Canvas is always square and fills the available width (CSS `width: 100%;
+// aspect-ratio: 1/1`). `canvasSize` is that CSS size in pixels - draw()/
+// toCanvas()/fromCanvas() all work in this space; resizeCanvas() below maps
+// it onto the backing pixel buffer (scaled for devicePixelRatio, so it stays
+// crisp on retina displays at any size) via a canvas transform.
+let canvasSize = 300;
+const PAD_FRAC = 0.1; // board inset, as a fraction of canvasSize
 
 function fmt(kg) {
   return kg.toFixed(1) + ' kg';
 }
 
 function toCanvas(x, y) {
-  const w = canvas.width, h = canvas.height;
-  return [w / 2 + x * (w / 2 - PAD), h / 2 - y * (h / 2 - PAD)];
+  const s = canvasSize, pad = s * PAD_FRAC;
+  return [s / 2 + x * (s / 2 - pad), s / 2 - y * (s / 2 - pad)];
 }
 
 function fromCanvas(px, py) {
-  const w = canvas.width, h = canvas.height;
-  const x = (px - w / 2) / (w / 2 - PAD);
-  const y = -(py - h / 2) / (h / 2 - PAD);
+  const s = canvasSize, pad = s * PAD_FRAC;
+  const x = (px - s / 2) / (s / 2 - pad);
+  const y = -(py - s / 2) / (s / 2 - pad);
   return [Math.max(-1, Math.min(1, x)), Math.max(-1, Math.min(1, y))];
 }
 
 function draw() {
-  const w = canvas.width, h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
+  const s = canvasSize, pad = s * PAD_FRAC;
+  ctx.clearRect(0, 0, s, s);
 
   // board outline
   ctx.strokeStyle = '#3a3f47';
   ctx.lineWidth = 2;
-  ctx.strokeRect(20, 20, w - 40, h - 40);
+  ctx.strokeRect(pad, pad, s - 2 * pad, s - 2 * pad);
   ctx.beginPath();
-  ctx.moveTo(w / 2, 20); ctx.lineTo(w / 2, h - 20);
-  ctx.moveTo(20, h / 2); ctx.lineTo(w - 20, h / 2);
+  ctx.moveTo(s / 2, pad); ctx.lineTo(s / 2, s - pad);
+  ctx.moveTo(pad, s / 2); ctx.lineTo(s - pad, s / 2);
   ctx.stroke();
+
+  const markerR = Math.max(6, s * 0.03);
 
   if (idealPoint) {
     const [ix, iy] = toCanvas(idealPoint.x, idealPoint.y);
-    const toleranceRadiusPx = tolerance * (w / 2 - PAD);
+    const toleranceRadiusPx = tolerance * (s / 2 - pad);
 
     ctx.strokeStyle = '#4ade80';
     ctx.setLineDash([4, 4]);
@@ -146,8 +191,8 @@ function draw() {
     ctx.strokeStyle = '#4ade80';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(ix - 8, iy); ctx.lineTo(ix + 8, iy);
-    ctx.moveTo(ix, iy - 8); ctx.lineTo(ix, iy + 8);
+    ctx.moveTo(ix - markerR, iy); ctx.lineTo(ix + markerR, iy);
+    ctx.moveTo(ix, iy - markerR); ctx.lineTo(ix, iy + markerR);
     ctx.stroke();
   }
 
@@ -158,19 +203,38 @@ function draw() {
   const [px, py] = toCanvas(lastCOP.x, lastCOP.y);
   ctx.fillStyle = '#60a5fa';
   ctx.beginPath();
-  ctx.arc(px, py, 9, 0, 2 * Math.PI);
+  ctx.arc(px, py, markerR, 0, 2 * Math.PI);
   ctx.fill();
 }
 
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  canvasSize = canvas.clientWidth;
+  canvas.width = canvasSize * dpr;
+  canvas.height = canvasSize * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // draw() etc. operate in CSS-pixel space
+  draw();
+}
+
+new ResizeObserver(resizeCanvas).observe(canvas);
+
 canvas.addEventListener('pointerdown', (ev) => {
   const rect = canvas.getBoundingClientRect();
-  const px = (ev.clientX - rect.left) * (canvas.width / rect.width);
-  const py = (ev.clientY - rect.top) * (canvas.height / rect.height);
+  const px = (ev.clientX - rect.left) * (canvasSize / rect.width);
+  const py = (ev.clientY - rect.top) * (canvasSize / rect.height);
   const [x, y] = fromCanvas(px, py);
   idealPoint = { x, y };
   document.getElementById('hint').textContent =
     'Idealpunkt gesetzt - erneut tippen, um ihn zu verschieben.';
   draw();
+  // A tap here is a real user gesture too - a good extra chance to recover
+  // a broken AudioContext (see rebuildAudio() below) without the user having
+  // to specifically find and re-tap the sound button. Only if sound was
+  // actually turned on, though - a diagram tap shouldn't start audio from
+  // scratch on its own.
+  if (soundEnabled && (!audioCtx || audioCtx.state !== 'running')) {
+    rebuildAudio();
+  }
 });
 
 toleranceInput.addEventListener('input', () => {
@@ -233,9 +297,27 @@ function initAudio() {
   setAudioMode(audioMode);
 }
 
+// Mobile browsers (iOS Safari especially) can leave an AudioContext in a
+// state that reports as 'running' - so the browser's own "this tab is
+// playing audio" indicator shows up - while no sound actually comes out.
+// This reliably happens when something calls resume() *outside* a direct
+// user gesture (a previous version of this page tried exactly that, via a
+// visibilitychange listener and a periodic timer, and produced exactly this
+// silently-broken-but-"running" state instead of fixing anything). The
+// robust fix is to never trust resume() from a stale context at all: on a
+// real tap, throw the whole audio graph away and build a fresh one - cheap,
+// and this is exactly what already works reliably for the very first tap.
+function rebuildAudio() {
+  if (audioCtx) {
+    try { audioCtx.close(); } catch (e) { /* already closed/broken - fine */ }
+  }
+  audioCtx = null;
+  initAudio();
+}
+
 soundToggle.addEventListener('click', () => {
-  if (!audioCtx) {
-    initAudio();
+  if (!audioCtx || audioCtx.state !== 'running') {
+    rebuildAudio();
   }
   soundEnabled = !soundEnabled;
   if (!soundEnabled && gainNode) {
@@ -247,6 +329,14 @@ soundToggle.addEventListener('click', () => {
 
 audio3dCheckbox.addEventListener('change', () => {
   setAudioMode(audio3dCheckbox.checked ? '3d' : 'pitch');
+});
+
+// Only *detect* a stuck context here and prompt for a tap - deliberately not
+// calling resume() automatically, see rebuildAudio() above for why.
+document.addEventListener('visibilitychange', () => {
+  if (audioCtx && soundEnabled && document.visibilityState === 'visible' && audioCtx.state !== 'running') {
+    soundToggle.textContent = '⚠️ Ton hängt – antippen zum Neustart';
+  }
 });
 
 function updateAudio(cop) {
@@ -328,6 +418,79 @@ function connect() {
 
 draw();
 connect();
+
+// --- Optional phone-hotspot uplink -----------------------------------------
+// The device's own AP always stays up regardless of this - see the hint text
+// next to the form. Credentials are saved on the device (NVS) and retried
+// automatically on future boots.
+const hotspotBtn = document.getElementById('hotspot-connect');
+const hotspotStatus = document.getElementById('hotspot-status');
+const hotspotScanBtn = document.getElementById('hotspot-scan');
+const hotspotScanList = document.getElementById('hotspot-scan-list');
+
+function rssiBars(rssi) {
+  // Rough signal-strength bucketing for a quick glance, not precision.
+  if (rssi >= -60) return '▂▄▆█';
+  if (rssi >= -70) return '▂▄▆';
+  if (rssi >= -80) return '▂▄';
+  return '▂';
+}
+
+hotspotScanBtn.addEventListener('click', async () => {
+  hotspotScanBtn.disabled = true;
+  hotspotScanBtn.textContent = 'Suche läuft…';
+  hotspotScanList.innerHTML = '';
+  try {
+    const res = await fetch('/wifi-scan');
+    const networks = await res.json();
+    if (!networks.length) {
+      hotspotScanList.innerHTML = '<div class="form-status">Keine WLANs gefunden.</div>';
+    }
+    for (const net of networks) {
+      const row = document.createElement('div');
+      row.className = 'scan-item';
+      row.innerHTML = '<span></span><span class="rssi"></span>';
+      row.children[0].textContent = net.ssid;
+      row.children[1].textContent = rssiBars(net.rssi) + ' ' + net.rssi + ' dBm';
+      row.addEventListener('click', () => {
+        document.getElementById('hotspot-ssid').value = net.ssid;
+        document.getElementById('hotspot-pass').focus();
+      });
+      hotspotScanList.appendChild(row);
+    }
+  } catch (e) {
+    hotspotScanList.innerHTML = '<div class="form-status">Suche fehlgeschlagen.</div>';
+  } finally {
+    hotspotScanBtn.disabled = false;
+    hotspotScanBtn.textContent = '📶 Sichtbare WLANs anzeigen';
+  }
+});
+
+hotspotBtn.addEventListener('click', async () => {
+  const ssid = document.getElementById('hotspot-ssid').value.trim();
+  const password = document.getElementById('hotspot-pass').value;
+  if (!ssid) {
+    hotspotStatus.textContent = 'Bitte WLAN-Namen eingeben.';
+    return;
+  }
+  hotspotBtn.disabled = true;
+  hotspotStatus.textContent = 'Verbinde… (kann bis zu 15s dauern)';
+  try {
+    const res = await fetch('/wifi-sta', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'ssid=' + encodeURIComponent(ssid) + '&password=' + encodeURIComponent(password),
+    });
+    const data = await res.json();
+    hotspotStatus.textContent = data.ok
+      ? ('Verbunden, IP: ' + data.ip + ' – Gerät ist jetzt zusätzlich über dieses WLAN erreichbar.')
+      : 'Verbindung fehlgeschlagen – der eigene Zugangspunkt läuft unverändert weiter.';
+  } catch (e) {
+    hotspotStatus.textContent = 'Senden fehlgeschlagen – bist du noch mit dem WLAN dieses Geräts verbunden?';
+  } finally {
+    hotspotBtn.disabled = false;
+  }
+});
 </script>
 </body>
 </html>
