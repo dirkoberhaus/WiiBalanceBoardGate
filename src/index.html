@@ -312,14 +312,30 @@ function rebuildAudio() {
     try { audioCtx.close(); } catch (e) { /* already closed/broken - fine */ }
   }
   audioCtx = null;
+  // Belongs to the context just closed above - setAudioMode() (called from
+  // initAudio() below) would otherwise try to disconnect the *new* gainNode
+  // from this stale, different-context node and throw InvalidAccessError
+  // ("the given destination is not connected", since nodes from two
+  // different contexts were never actually connected in the first place),
+  // aborting initAudio() before it finishes wiring the new graph to the
+  // speakers - leaving a context that reports 'running' but is silent.
+  activeSpatializer = null;
   initAudio();
 }
 
 soundToggle.addEventListener('click', () => {
-  if (!audioCtx || audioCtx.state !== 'running') {
+  const wasStuck = audioCtx && audioCtx.state !== 'running';
+  if (!audioCtx || wasStuck) {
     rebuildAudio();
   }
-  soundEnabled = !soundEnabled;
+  // A tap that just recovers a stuck context isn't an intentional on/off
+  // toggle - sound was already meant to be on, so leave it on. Without this
+  // check, the rebuild above and the toggle below fought each other: the
+  // context came back to life for an instant, then got silenced again in
+  // the very same click.
+  if (!(wasStuck && soundEnabled)) {
+    soundEnabled = !soundEnabled;
+  }
   if (!soundEnabled && gainNode) {
     gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
   }
