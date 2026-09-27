@@ -14,19 +14,24 @@ module as something like `ESP32-D0WDQ6`, `ESP32-WROOM-32`, etc. It does
 **not** include ESP32-S2, S3, C2, C3, C6 or H2 — none of those have classic
 Bluetooth, only BLE (or none at all), and the board simply won't be found.
 
-Two boards are supported out of the box, each its own PlatformIO
+Three boards are supported out of the box, each its own PlatformIO
 environment:
 
 | Environment | Board | Display |
 |---|---|---|
 | `heltec-lora32-v2` (default) | Heltec WiFi LoRa32 V2 | 128x64 SSD1306 OLED |
 | `ttgo-t-display` | TTGO/LILYGO T-Display | 240x135 ST7789 color TFT |
+| `mini-d1` | Bare ESP32 (e.g. a Mini D1 board), no display | none |
 
-Both use plain `board = esp32dev` in `platformio.ini` — pins for the display,
+All use plain `board = esp32dev` in `platformio.ini` — pins for the display,
 buttons etc. are hardcoded per board in `src/display_ssd1306.c` /
-`src/display_st7789.c` (see comments there). Porting to another original-
-ESP32 board mainly means adding a third display backend (or building
-without a display at all — `display_init()` failing is handled gracefully).
+`src/display_st7789.c` / `src/display_none.c` (see comments there). The
+`mini-d1` environment sets no display build flag at all; `display_none.c`'s
+stub is what gets compiled in whenever neither `DISPLAY_SSD1306` nor
+`DISPLAY_ST7789` is defined, and `display_init()` reporting failure is
+already handled gracefully everywhere it's used. Porting to another
+original-ESP32 board with its own display mainly means adding a fourth
+display backend.
 
 ## Prerequisites
 
@@ -43,6 +48,9 @@ pio run -e heltec-lora32-v2
 
 # TTGO T-Display
 pio run -e ttgo-t-display
+
+# Bare ESP32, no display (e.g. Mini D1)
+pio run -e mini-d1
 ```
 
 The first build downloads the ESP32 toolchain/framework and can take
@@ -66,6 +74,7 @@ Then, matching the environment to the board you're flashing:
 ```sh
 pio run -e heltec-lora32-v2 --target upload --upload-port /dev/cu.usbserial-XXXX
 pio run -e ttgo-t-display --target upload --upload-port /dev/cu.usbserial-XXXX
+pio run -e mini-d1 --target upload --upload-port /dev/cu.usbserial-XXXX
 ```
 
 (Omit `--upload-port` to let PlatformIO auto-detect it, if you only have one
@@ -115,7 +124,11 @@ while True:
 4. The onboard display shows connection status and, on the TTGO T-Display,
    a graphical center-of-pressure panel. Press the board's built-in button
    (GPIO0 — the Heltec's PRG button / TTGO's top button) to tare (zero out
-   whatever's currently on the board).
+   whatever's currently on the board). The `mini-d1` build has no display, so
+   status instead comes from the GPIO2 LED (lit while streaming); a tare
+   button still needs to be wired to GPIO0 by hand if you want one, since a
+   bare ESP32 module has no dedicated button broken out to it — and since the
+   board already auto-tares itself once on connect, this is optional.
 
 ## Configuration knobs
 
