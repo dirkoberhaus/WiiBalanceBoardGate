@@ -6,11 +6,16 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "battery.h"
 #include "display.h"
 #include "dns_server.h"
 #include "wifi_ap.h"
 #include "ws_server.h"
 #include "wiimote_bt.h"
+#if defined(DISPLAY_SSD1306) || defined(DISPLAY_ST7789)
+#include "driver/rtc_io.h"
+#include "esp_sleep.h"
+#endif
 
 static const char *TAG = "main";
 
@@ -33,9 +38,16 @@ static const char *TAG = "main";
 #define SAMPLE_REDRAW_INTERVAL_US (200 * 1000)
 #define TARE_MSG_DURATION_US (2 * 1000 * 1000)
 
+// Heltec/TTGO only (see the deep-sleep block in app_main()/header_timer_cb()):
+// if the Balance Board hasn't been connected for this long, sleep until the
+// PRG/tare button wakes the board back up. Mini D1 has no dedicated button to
+// wake it with, so it's excluded - it just keeps scanning forever.
+#define DEEP_SLEEP_IDLE_US (120 * 1000 * 1000)
+
 static wiimote_bt_state_t s_bt_state = WIIMOTE_BT_SCANNING;
 static int64_t s_last_redraw_us = 0;
 static int64_t s_tare_msg_until_us = 0;
+static int64_t s_last_connected_us = 0;
 
 // The display backends (SPI/I2C) aren't reentrant, but redraw_header(),
 // on_sample() and tare_button_task() run on three different tasks (esp_timer,
@@ -108,27 +120,79 @@ static const char *bt_state_text(wiimote_bt_state_t state)
     }
 }
 
+// Row for the battery line on boards with no graphics panel (SSD1306) - rows
+// 4-7 are otherwise unused there (0:WIFI, 1:BT, 2:tare message, 3:UNCALIBRATED).
+// The ST7789's rows are packed tight around its COP panel (see COP_PANEL_TOP_PX),
+// so there's no spare row there - its battery reading (when it has one) rides
+// along in the WIFI line instead.
+#define BATTERY_ROW 4
+
 static void redraw_header(void)
 {
-    char line[22];
-    snprintf(line, sizeof(line), "WIFI AP  C:%d", ws_server_client_count());
+    char line[48]; // generous vs. the display's actual column count - just truncates on draw
+    bool gfx = display_has_graphics();
+    int batt = battery_read_percent();
+
+    if (gfx && batt >= 0) {
+        snprintf(line, sizeof(line), "WIFI C:%d BAT:%d%%", ws_server_client_count(), batt);
+    } else {
+        snprintf(line, sizeof(line), "WIFI AP  C:%d", ws_server_client_count());
+    }
+
     xSemaphoreTake(s_display_mutex, portMAX_DELAY);
     display_draw_text(0, 0, line);
     display_draw_text(0, 1, bt_state_text(s_bt_state));
+    if (!gfx) {
+        if (batt >= 0) {
+            snprintf(line, sizeof(line), "BAT: %d%%", batt);
+            display_draw_text(0, BATTERY_ROW, line);
+        } else {
+            display_draw_text(0, BATTERY_ROW, "                    "); // blank the row
+        }
+    }
     display_flush();
     xSemaphoreGive(s_display_mutex);
 }
+
+#if defined(DISPLAY_SSD1306) || defined(DISPLAY_ST7789)
+static void enter_deep_sleep(void)
+{
+    ESP_LOGW(TAG, "No Balance Board for %d minutes - going to deep sleep. "
+                   "Press the PRG/tare button to wake up.", (int)(DEEP_SLEEP_IDLE_US / 1000000 / 60));
+    xSemaphoreTake(s_display_mutex, portMAX_DELAY);
+    display_draw_text(0, 0, "SLEEPING");
+    display_draw_text(0, 1, "press button to wake");
+    display_flush();
+    xSemaphoreGive(s_display_mutex);
+    vTaskDelay(pdMS_TO_TICKS(200)); // let the display transaction finish
+
+    rtc_gpio_pullup_en(TARE_BUTTON_GPIO);
+    rtc_gpio_pulldown_dis(TARE_BUTTON_GPIO);
+    ESP_ERROR_CHECK(esp_sleep_enable_ext0_wakeup(TARE_BUTTON_GPIO, 0)); // wake on button press (active low)
+    esp_deep_sleep_start();
+}
+#endif
 
 static void header_timer_cb(void *arg)
 {
     (void)arg;
     redraw_header();
+
+#if defined(DISPLAY_SSD1306) || defined(DISPLAY_ST7789)
+    if (s_bt_state != WIIMOTE_BT_STREAMING &&
+        esp_timer_get_time() - s_last_connected_us >= DEEP_SLEEP_IDLE_US) {
+        enter_deep_sleep();
+    }
+#endif
 }
 
 static void on_bt_state(wiimote_bt_state_t state)
 {
     s_bt_state = state;
     gpio_set_level(STATUS_LED_GPIO, state == WIIMOTE_BT_STREAMING ? 1 : 0);
+    if (state == WIIMOTE_BT_STREAMING) {
+        s_last_connected_us = esp_timer_get_time(); // resets the deep-sleep idle timer
+    }
     redraw_header();
 }
 
@@ -232,6 +296,11 @@ void app_main(void)
     } else {
         ESP_LOGW(TAG, "No display (or init failed) - continuing without it");
     }
+
+    if (!battery_init()) {
+        ESP_LOGI(TAG, "No battery sense on this board - skipping");
+    }
+    s_last_connected_us = esp_timer_get_time(); // starts the deep-sleep idle countdown from boot
 
     ESP_ERROR_CHECK(wifi_ap_start(WIFI_AP_SSID, WIFI_AP_PASSWORD));
     wifi_sta_try_saved(); // if a phone hotspot was saved before, try it in the background

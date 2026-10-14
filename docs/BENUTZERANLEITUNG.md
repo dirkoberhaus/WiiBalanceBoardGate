@@ -66,4 +66,4 @@ Anzeige.
 | Balance Board verbindet nicht | SYNC-Knopf nochmal drücken, ein paar Sekunden warten (siehe Schritt 2) |
 | WLAN ist sichtbar, aber Handy/Laptop kommt nicht rein | Erst das Balance Board verbinden (Schritt 2), danach nochmal mit dem WLAN verbinden |
 | Seite lädt nicht | Sicherstellen, dass du wirklich mit dem `WiiBalanceBoardGate-...`-Netz verbunden bist, nicht mit einem anderen WLAN |
-| Anzeige bleibt bei "UNCALIBRATED" | Balance Board neu verbinden (Batterie raus/rein, dann SYNC erneut drücken) |
+| Gesamtgewicht auf der Webseite zeigt "uncalibrated" | Seltener Fehlerfall beim Auslesen der Kalibrierung — Balance Board neu verbinden (Batterie raus/rein, dann SYNC erneut drücken) |
