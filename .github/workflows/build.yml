@@ -26,9 +26,15 @@ jobs:
           key: pio-${{ matrix.environment }}-${{ hashFiles('platformio.ini') }}
           restore-keys: pio-${{ matrix.environment }}-
 
+      # Pinned, not "3.x": a floating version grabs whatever's newest on the
+      # runner, which can be newer than ESP-IDF's own pinned Python deps
+      # support - e.g. pydantic-core's PyO3 build broke on a bleeding-edge
+      # interpreter here (flaky per-job depending on prebuilt-wheel
+      # availability, not a real code issue). 3.12 has solid wheel coverage
+      # for everything PlatformIO/ESP-IDF pull in.
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
+          python-version: "3.12"
 
       - run: pip install --upgrade platformio
 
