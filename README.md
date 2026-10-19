@@ -152,8 +152,26 @@ every later update can go over WiFi.
 For boards already out with end users, `pio run --target upload` isn't
 realistic - they don't have PlatformIO installed. Instead,
 [`tools/web-flash/`](tools/web-flash/) is a self-contained browser flasher
-(ESP Web Tools / WebSerial, Chrome/Edge only) that the customer runs
-locally with no install beyond Python being present:
+(ESP Web Tools / WebSerial, Chrome/Edge only).
+
+**Hosted (preferred):** every push to `main` rebuilds all three
+environments and publishes `tools/web-flash/` with fresh firmware baked in
+to GitHub Pages via `.github/workflows/build.yml`'s `package-pages`/
+`deploy-pages` jobs:
+
+    https://dirkoberhaus.github.io/WiiBalanceBoardGate/
+
+Send customers that link directly - no zip, no local server, nothing to
+install; WebSerial just needs an HTTPS origin, which Pages provides for
+free. Requires a one-time repo setting (**Settings → Pages → Build and
+deployment → Source: "GitHub Actions"**) that only a repo admin can set, not
+something this workflow can do on its own. The firmware `.bin` files end up
+publicly reachable at that URL regardless of the repo's own visibility -
+GitHub Pages has no private option outside Enterprise Cloud - which is fine
+here since they're not secret (no image signing; the same files already get
+emailed out via the zip below).
+
+**Offline fallback:**
 
 ```sh
 tools/package_web_flasher.sh
@@ -161,11 +179,12 @@ tools/package_web_flasher.sh
 
 builds all three board environments and zips `tools/web-flash/` (page +
 vendored ESP Web Tools JS + a tiny local-server start script per OS) into
-`dist/wiibalanceboardgate-web-flasher-<version>.zip`. Send that zip to the
-customer - `tools/web-flash/ANLEITUNG.txt` (German, written for them) walks
-through double-clicking the start script, picking their board model, and
-flashing over USB-C. Re-run the packaging script after any firmware change
-meant to reach boards still on the pre-OTA layout.
+`dist/wiibalanceboardgate-web-flasher-<version>.zip`, for when the hosted
+page isn't an option. Send that zip to the customer -
+`tools/web-flash/ANLEITUNG.txt` (German, written for them) walks through
+double-clicking the start script, picking their board model, and flashing
+over USB-C. Re-run the packaging script after any firmware change meant to
+reach boards still on the pre-OTA layout.
 
 Once a board is on the OTA-capable layout, firmware can be pushed over WiFi
 via the web UI's "Firmware-Update" section (see

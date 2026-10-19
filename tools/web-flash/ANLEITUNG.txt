@@ -4,6 +4,16 @@ WiiBalanceBoardGate – Firmware per USB installieren
 Dieses Tool bringt dein Board einmalig per USB-C auf eine neue Firmware,
 ohne dass du irgendetwas installieren musst – alles läuft im Browser.
 
+EINFACHSTER WEG: Diese Seite ist auch online erreichbar, dann brauchst du
+gar kein Zip und kein Startskript - einfach im Browser öffnen:
+
+    https://dirkoberhaus.github.io/WiiBalanceBoardGate/
+
+Die Schritte 3-7 unten sind dann identisch, nur Schritt 1-2 (Zip entpacken,
+Startskript starten) entfallen. Der Rest dieser Anleitung beschreibt den
+Offline-Weg (Zip + lokaler Server) für den Fall, dass die Seite mal nicht
+erreichbar ist.
+
 Was du brauchst:
 - Einen Computer (Windows, Mac oder Linux) mit Google Chrome, Microsoft
   Edge oder Opera. Firefox, Safari und Handys funktionieren NICHT.

@@ -5,6 +5,11 @@ name: Build firmware
   pull_request:
   workflow_dispatch:
 
+# Default to read-only; the deploy-pages job below opts into pages/id-token
+# write for just that job, not the whole workflow.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -53,3 +58,50 @@ jobs:
             .pio/build/${{ matrix.environment }}/partitions.bin
             .pio/build/${{ matrix.environment }}/ota_data_initial.bin
           if-no-files-found: error
+
+  # Publishes tools/web-flash/ (the browser USB flasher - see its
+  # ANLEITUNG.txt) as a GitHub Pages site with this run's freshly built
+  # firmware baked in, so flashing a board is just "open this link" instead
+  # of the zip + local-server fallback tools/package_web_flasher.sh
+  # produces. Main-branch pushes only - PRs/other branches don't touch the
+  # live page customers use.
+  package-pages:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: firmware-*
+          path: artifacts
+
+      - run: |
+          set -eu
+          mkdir -p site
+          cp -r tools/web-flash/. site/
+          rm -rf site/bin
+          for env in heltec-lora32-v2 ttgo-t-display mini-d1; do
+            mkdir -p "site/bin/$env"
+            cp "artifacts/firmware-$env/"* "site/bin/$env/"
+          done
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy-pages:
+    needs: package-pages
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
