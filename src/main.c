@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #include "driver/gpio.h"
+#include "esp_coexist.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -9,6 +10,7 @@
 #include "battery.h"
 #include "display.h"
 #include "dns_server.h"
+#include "ota.h"
 #include "wifi_ap.h"
 #include "ws_server.h"
 #include "wiimote_bt.h"
@@ -190,6 +192,14 @@ static void on_bt_state(wiimote_bt_state_t state)
 {
     s_bt_state = state;
     gpio_set_level(STATUS_LED_GPIO, state == WIIMOTE_BT_STREAMING ? 1 : 0);
+    // The WiFi AP runs the whole time, which shares the single radio with
+    // classic BT - fine once streaming (small, interrupt-driven HID
+    // reports), but GAP inquiry/paging while scanning or opening the
+    // connection is far more latency-sensitive and loses badly to WiFi
+    // beacon/traffic contention on boards with less RF margin (see
+    // ARCHITECTURE.md). Bias the coexistence arbiter toward BT for exactly
+    // that fragile window, then hand fairness back to WiFi once streaming.
+    esp_coex_preference_set(state == WIIMOTE_BT_STREAMING ? ESP_COEX_PREFER_BALANCE : ESP_COEX_PREFER_BT);
     if (state == WIIMOTE_BT_STREAMING) {
         s_last_connected_us = esp_timer_get_time(); // resets the deep-sleep idle timer
     }
@@ -308,6 +318,11 @@ void app_main(void)
     ESP_ERROR_CHECK(ws_server_start());
     wiimote_bt_start(on_sample, on_bt_state);
     xTaskCreate(tare_button_task, "tare_btn", 2048, NULL, 5, NULL);
+
+    // Everything above came up without crashing - tell the bootloader this
+    // image is good, so a freshly-OTA'd build that reboot-loops gets rolled
+    // back automatically instead of leaving the board stuck.
+    ota_mark_app_valid();
 
     if (disp_err == ESP_OK) {
         // The header (WiFi client count) otherwise only redraws on a BT

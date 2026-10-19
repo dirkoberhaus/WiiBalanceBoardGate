@@ -7,6 +7,7 @@
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "index_html.h"
+#include "ota.h"
 #include "wifi_ap.h"
 
 static const char *TAG = "ws_server";
@@ -145,6 +146,18 @@ static const httpd_uri_t wifi_scan_uri = {
     .handler = wifi_scan_get_handler,
 };
 
+static const httpd_uri_t ota_version_uri = {
+    .uri = "/version",
+    .method = HTTP_GET,
+    .handler = ota_version_get_handler,
+};
+
+static const httpd_uri_t ota_update_uri = {
+    .uri = "/update",
+    .method = HTTP_POST,
+    .handler = ota_update_post_handler,
+};
+
 esp_err_t ws_server_start(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -163,6 +176,14 @@ esp_err_t ws_server_start(void)
         return err;
     }
     err = httpd_register_uri_handler(s_server, &wifi_scan_uri);
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = httpd_register_uri_handler(s_server, &ota_version_uri);
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = httpd_register_uri_handler(s_server, &ota_update_uri);
     if (err != ESP_OK) {
         return err;
     }

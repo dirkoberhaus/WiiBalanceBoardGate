@@ -1,0 +1,57 @@
+WiiBalanceBoardGate – Firmware per USB installieren
+====================================================
+
+Dieses Tool bringt dein Board einmalig per USB-C auf eine neue Firmware,
+ohne dass du irgendetwas installieren musst – alles läuft im Browser.
+
+Was du brauchst:
+- Einen Computer (Windows, Mac oder Linux) mit Google Chrome, Microsoft
+  Edge oder Opera. Firefox, Safari und Handys funktionieren NICHT.
+- Ein USB-C-Kabel.
+- Das Board selbst.
+
+So geht's:
+
+1. Dieses Zip an einem beliebigen Ort entpacken (falls noch nicht
+   geschehen).
+
+2. Startskript für dein Betriebssystem doppelklicken:
+   - Mac/Linux: "start-mac-linux.command"
+     (Falls eine Sicherheitswarnung erscheint: mit Rechtsklick ->
+     "Öffnen" bestätigen.)
+   - Windows: "start-windows.bat"
+
+   Es öffnet sich automatisch ein Browserfenster. Falls nicht: Chrome/Edge
+   selbst öffnen und http://localhost:8080/ eingeben.
+
+3. Board per USB-C mit dem Computer verbinden.
+
+4. Auf der Webseite den Knopf "Installieren" neben deinem Board-Modell
+   anklicken (Heltec mit rundem OLED-Display / TTGO mit Farbdisplay /
+   Mini D1 ohne Display).
+
+5. Im Auswahlfenster den seriellen Port deines Boards auswählen und
+   "Verbinden" bestätigen. Falls mehrere Ports angezeigt werden und du
+   unsicher bist: Board kurz ab- und wieder anstecken, der neu
+   erscheinende Eintrag ist er.
+
+6. Warten, bis der Fortschrittsbalken bei 100% ist und "Installation
+   abgeschlossen" erscheint (ca. 1-2 Minuten). Das Board währenddessen
+   nicht vom Kabel trennen.
+
+7. Fertig! Das Startskript (Schritt 2) kannst du jetzt schließen. Ab jetzt
+   läuft das Board wie gewohnt weiter – die normale Bedienung (WLAN
+   verbinden, Balance Board syncen) steht in der separaten
+   Benutzeranleitung.
+
+Dieses USB-Tool brauchst du nur dieses eine Mal. Zukünftige Updates
+bekommt das Board direkt über WLAN, über den Punkt "Firmware-Update" auf
+der Board-eigenen Webseite.
+
+Bei Problemen:
+- Knopf bleibt grau: falscher Browser (siehe oben) oder die Seite wurde
+  nicht über das Startskript geöffnet, sondern direkt als Datei.
+- Kein Port im Auswahlfenster sichtbar: anderes/besseres USB-Kabel
+  probieren (manche Kabel können nur laden, nicht übertragen), oder
+  Treiber für den USB-Chip des Boards installieren (CH340/CH343/CP210x,
+  je nach Board).

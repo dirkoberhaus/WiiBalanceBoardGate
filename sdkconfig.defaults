@@ -22,3 +22,11 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
 # Matches the common 4MB flash size on ESP32 dev boards; change if yours differs.
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# OTA updates (see src/ota.c): the bootloader boots a freshly-flashed image
+# as "pending verify" and only keeps it if the app explicitly confirms
+# itself - esp_ota_mark_app_valid_cancel_rollback() in main.c. If a bad
+# image crashes/reboot-loops before reaching that call, the bootloader
+# automatically reverts to the previous working slot instead of bricking
+# the board.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y

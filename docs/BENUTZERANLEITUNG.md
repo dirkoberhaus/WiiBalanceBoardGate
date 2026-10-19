@@ -57,6 +57,36 @@ Anzeige.
   direkt angezeigt — nur die relative Verteilung. Auf der Webseite lassen
   sich die genauen Zahlen bei Bedarf über einen "Details anzeigen"-Schalter
   einblenden.
+- Unter dem Diagramm zeigt **"Vorfuß / Ferse: X% / Y%"** live die aktuelle
+  Gewichtsverteilung auf dieser Achse an — nicht nur die Markierung im
+  Diagramm, sondern die genaue Prozentzahl.
+- **Bogensport-Ziel (60% Vorfuß / 40% Ferse):** Knopf "🏹 Ziel: 60% Vorfuß
+  / 40% Ferse" aktiviert automatisch die für den Bogensport übliche
+  Gewichtsverteilung als Zielpunkt, statt ihn manuell im Diagramm antippen
+  zu müssen. Erscheint die Markierung dabei an der falschen Stelle (z.B.
+  Richtung Ferse statt Vorfuß), liegt das daran, dass das Board andersherum
+  unter den Füßen liegt als vom Gerät angenommen — dann einmal das Häkchen
+  "Vorne/Hinten vertauscht" daneben setzen, danach passt die Markierung
+  dauerhaft für dieses Board/diese Standposition. Einfach ins Diagramm
+  tippen, um stattdessen wieder einen eigenen Zielpunkt zu setzen.
+
+## Firmware aktualisieren (optional)
+
+Falls du eine neue Firmware-Datei (`firmware.bin`) bekommen hast:
+
+1. Mit dem WLAN des Boards verbinden und die Seite öffnen (siehe oben).
+2. Ganz unten auf **"Firmware-Update"** tippen, um den Bereich aufzuklappen.
+3. Die `firmware.bin`-Datei auswählen und auf **"Update hochladen"** tippen.
+4. Warten, bis der Fortschritt bei 100% ist — das Board startet danach
+   automatisch neu. Die WLAN-Verbindung geht dabei kurz verloren, das ist
+   normal.
+5. Nach ca. 10-15 Sekunden neu mit dem WLAN verbinden und die Seite erneut
+   öffnen — unter "Firmware-Update" steht jetzt die neue Version.
+
+Falls nach dem Update etwas nicht mehr funktioniert: einfach nochmal die
+Stromversorgung trennen und neu verbinden. Das Board merkt sich automatisch,
+ob die neue Firmware tatsächlich hochgefahren ist — tut sie das nicht,
+springt es von selbst auf die vorherige, funktionierende Version zurück.
 
 ## Problembehandlung
 

@@ -61,6 +61,16 @@ the downloaded ESP-IDF framework — see [ARCHITECTURE.md](ARCHITECTURE.md#the-b
 for why this is necessary. It's idempotent and safe to ignore; you'll see a
 `Patched ...` line the first time it runs.
 
+### CI
+
+[`.github/workflows/build.yml`](.github/workflows/build.yml) builds all
+three environments on every push/PR (GitHub Actions; this repo's primary
+remote is Gitea, so this only runs if/when the repo also lives on
+github.com) and uploads `firmware.bin`/`bootloader.bin`/`partitions.bin`/
+`ota_data_initial.bin` as run artifacts per environment - the same four
+files `tools/package_web_flasher.sh` and a manual `pio run -t upload` use.
+It's a compile-check + artifact grab, not a release pipeline.
+
 ## Flash
 
 Find your board's serial port:
@@ -129,6 +139,63 @@ while True:
    button still needs to be wired to GPIO0 by hand if you want one, since a
    bare ESP32 module has no dedicated button broken out to it — and since the
    board already auto-tares itself once on connect, this is optional.
+
+## Updating boards already in the field
+
+**One-time USB step for boards flashed before OTA support existed:** OTA
+updates only rewrite an app partition, never the partition table itself, so
+a board still running the old single-`factory` layout can't receive its
+*first* OTA update until it's reflashed once over USB with a build from
+*this* `partitions.csv` (dual `ota_0`/`ota_1`). After that one USB flash,
+every later update can go over WiFi.
+
+For boards already out with end users, `pio run --target upload` isn't
+realistic - they don't have PlatformIO installed. Instead,
+[`tools/web-flash/`](tools/web-flash/) is a self-contained browser flasher
+(ESP Web Tools / WebSerial, Chrome/Edge only) that the customer runs
+locally with no install beyond Python being present:
+
+```sh
+tools/package_web_flasher.sh
+```
+
+builds all three board environments and zips `tools/web-flash/` (page +
+vendored ESP Web Tools JS + a tiny local-server start script per OS) into
+`dist/wiibalanceboardgate-web-flasher-<version>.zip`. Send that zip to the
+customer - `tools/web-flash/ANLEITUNG.txt` (German, written for them) walks
+through double-clicking the start script, picking their board model, and
+flashing over USB-C. Re-run the packaging script after any firmware change
+meant to reach boards still on the pre-OTA layout.
+
+Once a board is on the OTA-capable layout, firmware can be pushed over WiFi
+via the web UI's "Firmware-Update" section (see
+[BENUTZERANLEITUNG.md](docs/BENUTZERANLEITUNG.md#firmware-aktualisieren-optional)
+for the end-user steps). To build an update:
+
+```sh
+pio run -e heltec-lora32-v2   # or ttgo-t-display / mini-d1, matching the board
+```
+
+The file to hand out is `.pio/build/<env>/firmware.bin` - *not*
+`bootloader.bin` or `partitions.bin`, and not the `.elf`. Send that one file
+to whoever is updating the board; they upload it through the web UI (or,
+from a script/terminal while connected to the board's WiFi):
+
+```sh
+curl --data-binary @.pio/build/heltec-lora32-v2/firmware.bin http://board/update
+```
+
+The device writes the new image to its inactive OTA slot, validates it, and
+only then reboots into it - the previous image is left untouched until that
+point, and the bootloader automatically reverts to it if the new image
+doesn't come up cleanly (see [ARCHITECTURE.md](ARCHITECTURE.md#firmware-updates-ota)).
+`GET /version` reports the currently running build's version (the web UI
+shows this under "Firmware-Update" too).
+
+**Only push a `firmware.bin` built from the same environment the board is
+already running** - mixing e.g. a `ttgo-t-display` build onto a board that's
+actually a Heltec swaps the display backend and pin assumptions along with
+it.
 
 ## Configuration knobs
 

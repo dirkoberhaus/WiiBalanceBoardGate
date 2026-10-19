@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WiiBalanceBoardGate - USB-Firmware-Tool</title>
+<script type="module" src="vendor/esp-web-tools/install-button.js"></script>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 20px; box-sizing: border-box;
+    background: #14161a; color: #e8e8ea;
+    font-family: -apple-system, system-ui, sans-serif;
+    max-width: 560px;
+  }
+  h1 { font-size: 1.2rem; font-weight: 600; margin: 0 0 4px; }
+  p { line-height: 1.5; color: #c4c8ce; }
+  .board {
+    background: #1e2128; border: 1px solid #3a3f47; border-radius: 10px;
+    padding: 14px 16px; margin: 14px 0; display: flex;
+    align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .board .label { font-size: 0.95rem; }
+  .board .sub { font-size: 0.8rem; color: #9aa0a8; margin-top: 2px; }
+  esp-web-install-button button {
+    background: #4ade80; color: #14161a; border: none;
+    border-radius: 8px; padding: 10px 16px; font-size: 0.9rem;
+    font-weight: 600; cursor: pointer;
+  }
+  .note {
+    font-size: 0.85rem; background: #1e2128; border: 1px solid #3a3f47;
+    border-radius: 10px; padding: 12px 14px; margin-top: 20px;
+  }
+  .note.warn { border-color: #f59e0b; }
+  code {
+    background: #0e1013; padding: 1px 5px; border-radius: 4px; font-size: 0.85em;
+  }
+</style>
+</head>
+<body>
+  <h1>WiiBalanceBoardGate - Firmware per USB installieren</h1>
+  <p>
+    Board per USB-C-Kabel mit dem Computer verbinden, dann unten den
+    passenden Knopf für dein Board-Modell anklicken. Es öffnet sich ein
+    Auswahlfenster für den seriellen Port - dort das Board auswählen und
+    "Verbinden" bestätigen. Der Vorgang dauert ca. 1-2 Minuten; das Board
+    während des Flashens nicht vom USB-Kabel trennen.
+  </p>
+
+  <div class="board">
+    <div>
+      <div class="label">Heltec WiFi LoRa32 V2</div>
+      <div class="sub">kleines rundes OLED-Display</div>
+    </div>
+    <esp-web-install-button manifest="manifest-heltec-lora32-v2.json">
+      <button slot="activate">Installieren</button>
+      <span slot="unsupported">Browser nicht unterstützt - siehe Hinweis unten.</span>
+      <span slot="not-allowed">Nicht erlaubt - diese Seite muss über den beiliegenden lokalen Server geöffnet sein, nicht als Datei.</span>
+    </esp-web-install-button>
+  </div>
+
+  <div class="board">
+    <div>
+      <div class="label">TTGO / LILYGO T-Display</div>
+      <div class="sub">farbiges rechteckiges Display</div>
+    </div>
+    <esp-web-install-button manifest="manifest-ttgo-t-display.json">
+      <button slot="activate">Installieren</button>
+      <span slot="unsupported">Browser nicht unterstützt - siehe Hinweis unten.</span>
+      <span slot="not-allowed">Nicht erlaubt - diese Seite muss über den beiliegenden lokalen Server geöffnet sein, nicht als Datei.</span>
+    </esp-web-install-button>
+  </div>
+
+  <div class="board">
+    <div>
+      <div class="label">Mini D1 / einfaches ESP32-Board</div>
+      <div class="sub">ohne Display</div>
+    </div>
+    <esp-web-install-button manifest="manifest-mini-d1.json">
+      <button slot="activate">Installieren</button>
+      <span slot="unsupported">Browser nicht unterstützt - siehe Hinweis unten.</span>
+      <span slot="not-allowed">Nicht erlaubt - diese Seite muss über den beiliegenden lokalen Server geöffnet sein, nicht als Datei.</span>
+    </esp-web-install-button>
+  </div>
+
+  <div class="note">
+    <strong>Falls die Knöpfe grau/inaktiv sind:</strong> Diese Funktion
+    braucht <strong>Google Chrome, Microsoft Edge oder Opera auf einem
+    Computer</strong> (Windows/Mac/Linux) - Firefox, Safari und
+    Handy-Browser werden nicht unterstützt.
+  </div>
+
+  <div class="note warn">
+    Dieses USB-Tool wird nur <strong>einmalig</strong> gebraucht. Danach
+    aktualisiert sich das Board direkt über WLAN (Abschnitt
+    "Firmware-Update" auf der Board-Webseite) - siehe
+    Benutzeranleitung.
+  </div>
+</body>
+</html>

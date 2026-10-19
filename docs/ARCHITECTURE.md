@@ -186,6 +186,96 @@ COP is — silent inside an adjustable tolerance ring. None of that state
 (target point, tolerance) is known to the firmware; it's purely a browser-
 side feature built on the raw stream.
 
+The "🏹 60% Vorfuß / 40% Ferse" button (an archery-specific customer
+request) is a thin layer on top of the same target-point mechanism: it just
+computes `idealPoint` from that ratio instead of a tap, on the same
+front/back axis the diagram and audio feedback already use. Front/back
+polarity depends on which way the board sits underfoot, which this project
+can't know in software - rather than hardcoding a guess, a checkbox next to
+the button flips the sign, and a manual canvas tap still overrides the
+preset at any time (clearing the button's active state).
+
+## Firmware updates (OTA)
+
+Boards in the field have no USB access and, as SoftAPs, no route to the
+internet either - so a pull-based updater (device polls a remote server) was
+ruled out in favor of a **local push**: `src/ota.c` exposes `POST /update`
+on the same `esp_http_server` instance that already serves the web UI,
+accepting a raw `firmware.bin` body and writing it straight into flash via
+`esp_ota_ops` (`esp_ota_begin`/`esp_ota_write`/`esp_ota_end`,
+`esp_ota_set_boot_partition`). `GET /version` reports the running image's
+version (from `esp_ota_get_partition_description`); the web UI's
+"Firmware-Update" section wraps both.
+
+```mermaid
+sequenceDiagram
+    participant UI as Web UI / curl
+    participant WS as ws_server.c
+    participant OTA as ota.c
+    participant Flash as inactive OTA slot
+
+    UI->>WS: POST /update (firmware.bin body)
+    WS->>OTA: ota_update_post_handler()
+    OTA->>Flash: esp_ota_write() in chunks, streamed from the socket
+    OTA->>Flash: esp_ota_end() - validates image header/magic
+    OTA->>OTA: esp_ota_set_boot_partition()
+    OTA-->>UI: {"ok":true}
+    OTA->>OTA: reboot_task (after response flushes)
+    Note over OTA: esp_restart() into the new slot
+```
+
+### Dual OTA partitions, not a single `factory` partition
+
+`partitions.csv` used to have one `factory` app partition; it's now
+`ota_0`/`ota_1` (1700K each, same size the single partition used to be) plus
+an 8K `otadata` partition that records which slot is active. This is what
+lets an update be written to the *inactive* slot while the board keeps
+running the current one untouched - a failed or truncated upload never
+touches the running image. Total OTA + `nvs` + `phy_init` footprint is well
+under the 4MB flash size this project already requires for BT+WiFi.
+
+Since this partition table change can only take effect via a full USB
+reflash (OTA never rewrites the partition table itself), boards flashed
+before this existed need exactly one more USB flash to reach it -
+[`tools/web-flash/`](../tools/web-flash/) packages that as a browser-based
+(ESP Web Tools / WebSerial) flasher a customer can run without installing
+PlatformIO, so this isn't a permanent "developer has to drive to the
+customer" situation. See [README.md](../README.md#updating-boards-already-in-the-field).
+
+### Rollback protects against a bad image bricking a board
+
+`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y` (`sdkconfig.defaults`) makes the
+bootloader treat a freshly-flashed image as "pending verify" on its first
+boot. `main.c` calls `ota_mark_app_valid()` (`esp_ota_mark_app_valid_cancel_rollback()`)
+right after everything - WiFi AP, HTTP server, Bluetooth task - has started
+without crashing. If a bad image panics or reboot-loops *before* reaching
+that call, the bootloader automatically reverts to the previous slot on the
+next boot instead of leaving the board stuck - important given these boards
+ship to non-technical end users with no USB recovery path at hand.
+
+### Why a raw-body upload instead of `esp_https_ota` or multipart
+
+`esp_https_ota` is built for *pulling* an image from a URL the device
+fetches itself - not applicable here since the device has no uplink to pull
+from by default (see above; the optional phone-hotspot uplink in
+`wifi_ap.c`/`index.html` could theoretically carry internet, but making
+updates depend on that being configured would be a worse default than "works
+over the board's own AP, always"). A plain `application/octet-stream` POST
+body keeps the receiving side to a straightforward `httpd_req_recv()` loop
+instead of a multipart parser, and lets the upload be driven equally from
+the web UI (`XMLHttpRequest`, for `upload.onprogress`) or a one-line `curl
+--data-binary`.
+
+### No image signing (yet)
+
+Anyone who can join the board's WiFi AP and knows its password can push a
+firmware image - there's no signature check beyond `esp_ota_end()`'s
+built-in header/magic-byte validation. That's an accepted tradeoff for the
+current deployment (trusted local network, physical possession implied by
+WiFi range), not an oversight; if boards are ever exposed more broadly,
+ESP-IDF's signed-app-verification (secure boot) support is the natural next
+step, not a redesign of this flow.
+
 ## Known constraints and gotchas
 
 ### The `BTA_SEC_NONE` patch
@@ -264,6 +354,32 @@ don't raise it without also raising `CONFIG_LWIP_MAX_SOCKETS`.
 S2/S3/C2/C3/C6/H2 variants don't have a classic BR/EDR radio at all (only
 BLE, or nothing). This can't be worked around in software — see the
 [README](README.md#hardware-requirements).
+
+### WiFi/BT radio coexistence can starve BT discovery on boards with less RF margin
+
+The WiFi AP and classic BT share a single radio the whole time the device is
+on (`wifi_ap_start()` runs before `wiimote_bt_start()` and neither ever
+stops), arbitrated by ESP-IDF's software coexistence layer
+(`CONFIG_ESP_COEX_SW_COEXIST_ENABLE`, on by default - the `coexist: coex
+firmware version` boot log line confirms it's active). This is usually a
+non-issue once streaming: HID input reports are small and interrupt-driven,
+and share the radio with WiFi fine. GAP inquiry/paging while **scanning for
+or opening** the Balance Board connection is a different story - it needs
+much more continuous air time, and loses badly to WiFi beacon/DHCP/AP
+traffic on a board with less RF margin (observed concretely on a mini-d1
+clone with a "generic"-detected flash chip - it would reliably find and
+connect to the Balance Board with the AP off, but essentially never with it
+on; a Heltec/TTGO with presumably better RF layout hasn't shown this).
+
+`on_bt_state()` in `main.c` biases the coexistence arbiter with
+`esp_coex_preference_set()`: `ESP_COEX_PREFER_BT` for every state up to and
+including the handshake, `ESP_COEX_PREFER_BALANCE` once `WIIMOTE_BT_STREAMING`
+is reached. This fixed the mini-d1 clone's connection failures in testing
+(HCI status went from `0x8`/timeout to `0x0`/success on the very next
+attempt) without having to delay or drop the WiFi AP - which would also have
+cost the always-available web UI (status page, `/update`) during however
+long BT takes to (re)connect, exactly when it's most useful for
+troubleshooting.
 
 ### `esp_hidh`'s report-descriptor matching (currently a non-issue, watch for it)
 

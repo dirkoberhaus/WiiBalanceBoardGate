@@ -1,0 +1,16 @@
+{
+  "name": "WiiBalanceBoardGate - Heltec WiFi LoRa32 V2 (OLED-Display)",
+  "version": "web-flash",
+  "new_install_prompt_erase": false,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        { "path": "bin/heltec-lora32-v2/bootloader.bin", "offset": 4096 },
+        { "path": "bin/heltec-lora32-v2/partitions.bin", "offset": 32768 },
+        { "path": "bin/heltec-lora32-v2/ota_data_initial.bin", "offset": 61440 },
+        { "path": "bin/heltec-lora32-v2/firmware.bin", "offset": 131072 }
+      ]
+    }
+  ]
+}

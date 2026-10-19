@@ -4,3 +4,7 @@ tools/*.png
 sdkconfig.*
 !sdkconfig.defaults
 .DS_Store
+
+# Built by tools/package_web_flasher.sh - regenerated from .pio/build/, not source.
+tools/web-flash/bin/
+dist/

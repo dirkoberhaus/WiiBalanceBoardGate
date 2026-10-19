@@ -1,0 +1,16 @@
+{
+  "name": "WiiBalanceBoardGate - TTGO/LILYGO T-Display (Farb-TFT)",
+  "version": "web-flash",
+  "new_install_prompt_erase": false,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        { "path": "bin/ttgo-t-display/bootloader.bin", "offset": 4096 },
+        { "path": "bin/ttgo-t-display/partitions.bin", "offset": 32768 },
+        { "path": "bin/ttgo-t-display/ota_data_initial.bin", "offset": 61440 },
+        { "path": "bin/ttgo-t-display/firmware.bin", "offset": 131072 }
+      ]
+    }
+  ]
+}

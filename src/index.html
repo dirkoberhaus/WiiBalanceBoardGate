@@ -78,8 +78,14 @@
 
   <canvas id="cop" width="300" height="300"></canvas>
   <div id="hint">Tippe ins Diagramm, um den Idealpunkt festzulegen.</div>
+  <div id="weight-split" style="font-size: 0.9rem; font-weight: 600; margin-top: 2px;">Vorfuß / Ferse: –</div>
 
   <div class="controls">
+    <button id="archery-preset">🏹 Ziel: 60% Vorfuß / 40% Ferse</button>
+    <label class="tolerance-row" style="cursor: pointer;">
+      <input type="checkbox" id="archery-flip" style="flex: 0;">
+      <span>Vorne/Hinten vertauscht (anhaken, falls die Zielmarkierung beim Aktivieren an der falschen Stelle erscheint)</span>
+    </label>
     <button id="sound-toggle">🔇 Ton aktivieren</button>
     <div id="sound-hint" style="margin-top: -4px; font-size: 0.8rem; color: #9aa0a8;">Stereo = links/rechts, Tonhöhe = vorne/hinten, Lautstärke = Abweichung.</div>
     <label class="tolerance-row" style="cursor: pointer;">
@@ -114,6 +120,17 @@
       <input type="password" id="hotspot-pass" placeholder="Passwort">
       <button id="hotspot-connect">Speichern &amp; verbinden</button>
       <div class="form-status" id="hotspot-status"></div>
+    </div>
+  </details>
+
+  <details>
+    <summary>Firmware-Update</summary>
+    <div class="form-row">
+      <div class="form-status">Aktuelle Version: <span id="ota-version">–</span></div>
+      <div class="form-status">Firmware-Datei (.bin) auswählen und hochladen. Das Gerät startet danach automatisch neu - die eigene WLAN-Verbindung geht dabei kurz verloren.</div>
+      <input type="file" id="ota-file" accept=".bin">
+      <button id="ota-upload">Update hochladen</button>
+      <div class="form-status" id="ota-status"></div>
     </div>
   </details>
 
@@ -218,12 +235,71 @@ function resizeCanvas() {
 
 new ResizeObserver(resizeCanvas).observe(canvas);
 
+// --- Bogensport-Preset (60% Vorfuß / 40% Ferse) -----------------------------
+// Front/back is the same "y" axis the diagram and audio feedback already
+// use (toCanvas()/fromCanvas() above, see also the orientation note on
+// audioMode's dy handling further down) - which physical direction that is
+// depends on which way round the board is underfoot, so this isn't
+// hardcoded one way; the checkbox flips it per setup instead of requiring a
+// code change.
+const ARCHERY_FOREFOOT_FRACTION = 0.6; // 60% Fußballen / 40% Ferse
+const archeryBtn = document.getElementById('archery-preset');
+const archeryFlipCheckbox = document.getElementById('archery-flip');
+let archeryActive = false;
+
+function archeryTargetY() {
+  const y = 2 * ARCHERY_FOREFOOT_FRACTION - 1; // 0.6/0.4 -> +0.2
+  return archeryFlipCheckbox.checked ? -y : y;
+}
+
+function applyArcheryPreset() {
+  idealPoint = { x: 0, y: archeryTargetY() };
+  document.getElementById('hint').textContent =
+    'Bogensport-Ziel aktiv (60% Vorfuß / 40% Ferse) - erneut tippen, um stattdessen einen eigenen Punkt zu setzen.';
+  draw();
+}
+
+archeryBtn.addEventListener('click', () => {
+  archeryActive = !archeryActive;
+  archeryBtn.classList.toggle('active', archeryActive);
+  if (archeryActive) {
+    applyArcheryPreset();
+  }
+});
+
+archeryFlipCheckbox.addEventListener('change', () => {
+  if (archeryActive) {
+    applyArcheryPreset(); // re-apply with the corrected orientation
+  }
+});
+
+const weightSplitEl = document.getElementById('weight-split');
+
+// Live numeric readout of the same front/back axis the diagram, audio
+// feedback and the archery preset all use (see archeryTargetY() above) -
+// e.g. "Vorfuß 58% / Ferse 42%" - so the actual split is visible, not just
+// how close the dot looks to the target by eye.
+function updateWeightSplit(cop) {
+  if (!cop || cop.total < 1) {
+    weightSplitEl.textContent = 'Vorfuß / Ferse: –';
+    return;
+  }
+  const y = archeryFlipCheckbox.checked ? -cop.y : cop.y;
+  const forefootPct = Math.round((y + 1) / 2 * 100);
+  weightSplitEl.textContent = `Vorfuß ${forefootPct}% / Ferse ${100 - forefootPct}%`;
+}
+
 canvas.addEventListener('pointerdown', (ev) => {
   const rect = canvas.getBoundingClientRect();
   const px = (ev.clientX - rect.left) * (canvasSize / rect.width);
   const py = (ev.clientY - rect.top) * (canvasSize / rect.height);
   const [x, y] = fromCanvas(px, py);
   idealPoint = { x, y };
+  // A manual tap always overrides the preset - without this, the button
+  // would keep showing "active" for a target point that's no longer the one
+  // actually in effect.
+  archeryActive = false;
+  archeryBtn.classList.remove('active');
   document.getElementById('hint').textContent =
     'Idealpunkt gesetzt - erneut tippen, um ihn zu verschieben.';
   draw();
@@ -413,6 +489,7 @@ function connect() {
       els.total.textContent = 'uncalibrated';
       lastCOP = null;
       draw();
+      updateWeightSplit(null);
       return;
     }
     els.tl.textContent = fmt(s.tl_kg);
@@ -429,6 +506,7 @@ function connect() {
     };
     draw();
     updateAudio(lastCOP);
+    updateWeightSplit(lastCOP);
   };
 }
 
@@ -506,6 +584,56 @@ hotspotBtn.addEventListener('click', async () => {
   } finally {
     hotspotBtn.disabled = false;
   }
+});
+
+// --- Firmware update (OTA) --------------------------------------------------
+// Uploads a raw firmware .bin via POST /update. Uses XMLHttpRequest (not
+// fetch) specifically for upload.onprogress - fetch has no reliable cross-
+// browser way to report upload progress. The device reboots into the new
+// image on success, which drops the WiFi connection, so a "disconnected -
+// retrying…" from the live WebSocket right after a reported success is
+// expected, not an error.
+const otaVersionEl = document.getElementById('ota-version');
+const otaFileInput = document.getElementById('ota-file');
+const otaUploadBtn = document.getElementById('ota-upload');
+const otaStatus = document.getElementById('ota-status');
+
+fetch('/version').then(r => r.json()).then(d => {
+  otaVersionEl.textContent = d.running || 'unbekannt';
+}).catch(() => {
+  otaVersionEl.textContent = 'unbekannt';
+});
+
+otaUploadBtn.addEventListener('click', () => {
+  const file = otaFileInput.files[0];
+  if (!file) {
+    otaStatus.textContent = 'Bitte zuerst eine .bin-Datei auswählen.';
+    return;
+  }
+  otaUploadBtn.disabled = true;
+  otaStatus.textContent = 'Lade hoch… 0%';
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/update');
+  xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+  xhr.upload.addEventListener('progress', (ev) => {
+    if (ev.lengthComputable) {
+      otaStatus.textContent = 'Lade hoch… ' + Math.round(100 * ev.loaded / ev.total) + '%';
+    }
+  });
+  xhr.onload = () => {
+    if (xhr.status === 200) {
+      otaStatus.textContent = 'Upload erfolgreich - Gerät startet neu…';
+    } else {
+      otaStatus.textContent = 'Fehlgeschlagen: ' + xhr.responseText;
+      otaUploadBtn.disabled = false;
+    }
+  };
+  xhr.onerror = () => {
+    otaStatus.textContent = 'Upload fehlgeschlagen - Verbindung unterbrochen?';
+    otaUploadBtn.disabled = false;
+  };
+  xhr.send(file);
 });
 </script>
 </body>

@@ -1,0 +1,49 @@
+name: Build firmware
+
+"on":
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [heltec-lora32-v2, ttgo-t-display, mini-d1]
+    steps:
+      - uses: actions/checkout@v4
+
+      # The ESP-IDF toolchain/framework PlatformIO downloads on first build
+      # is a few hundred MB - caching it is the difference between a ~1min
+      # and a ~10min run.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ matrix.environment }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-${{ matrix.environment }}-
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - run: pip install --upgrade platformio
+
+      - run: pio run -e ${{ matrix.environment }}
+
+      # Same four files tools/package_web_flasher.sh picks up for the
+      # browser-based USB flasher (see tools/web-flash/) and what a manual
+      # `pio run -t upload` writes to flash - handy to grab straight from a
+      # CI run without building locally.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.environment }}
+          path: |
+            .pio/build/${{ matrix.environment }}/firmware.bin
+            .pio/build/${{ matrix.environment }}/bootloader.bin
+            .pio/build/${{ matrix.environment }}/partitions.bin
+            .pio/build/${{ matrix.environment }}/ota_data_initial.bin
+          if-no-files-found: error
