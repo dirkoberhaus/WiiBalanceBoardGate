@@ -1,8 +1,9 @@
 WiiBalanceBoardGate – Firmware per USB installieren
 ====================================================
 
-Dieses Tool bringt dein Board einmalig per USB-C auf eine neue Firmware,
-ohne dass du irgendetwas installieren musst – alles läuft im Browser.
+Dieses Tool bringt dein Board per USB-C auf eine neue Firmware, ohne dass
+du irgendetwas installieren musst – alles läuft im Browser. Das ist auch
+der Weg für jedes zukünftige Update, nicht nur für die Ersteinrichtung.
 
 EINFACHSTER WEG: Diese Seite ist auch online erreichbar, dann brauchst du
 gar kein Zip und kein Startskript - einfach im Browser öffnen:
@@ -54,9 +55,9 @@ So geht's:
    verbinden, Balance Board syncen) steht in der separaten
    Benutzeranleitung.
 
-Dieses USB-Tool brauchst du nur dieses eine Mal. Zukünftige Updates
-bekommt das Board direkt über WLAN, über den Punkt "Firmware-Update" auf
-der Board-eigenen Webseite.
+Für zukünftige Updates einfach wieder hierher zurückkommen (am besten
+https://dirkoberhaus.github.io/WiiBalanceBoardGate/ als Lesezeichen
+speichern) und die Schritte 3-6 wiederholen.
 
 Bei Problemen:
 - Knopf bleibt grau: falscher Browser (siehe oben) oder die Seite wurde
