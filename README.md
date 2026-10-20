@@ -235,3 +235,8 @@ is ported from [RombergLab](https://github.com/bendermh/RombergLab)
 `tools/web-flash/vendor/esp-web-tools/` is vendored from
 [esp-web-tools](https://github.com/esphome/esp-web-tools) (Apache-2.0) -
 see [NOTICE](NOTICE) for the full attribution.
+
+This is an independently developed, unofficial project, not affiliated
+with or endorsed by Nintendo or Espressif. Wii™ and Wii Balance Board™ are
+trademarks of Nintendo Co., Ltd.; ESP32™ is a trademark of Espressif
+Systems.
