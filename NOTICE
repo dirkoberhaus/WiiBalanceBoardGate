@@ -1,0 +1,18 @@
+WiiBalanceBoardGate
+Copyright 2026 Dirk Oberhaus
+
+Licensed under the Apache License, Version 2.0.
+
+This product includes software from the following third-party projects:
+
+- RombergLab (https://github.com/bendermh/RombergLab), licensed under the
+  Apache License, Version 2.0. src/wiimote_protocol.c and
+  src/wiimote_protocol.h are ported from its
+  wiiRemoteFramework/WiiRemote.m (see that file's header for details).
+  That file itself carries "Copyright 2006 KIMURA Hiroaki" from
+  DarwiinRemote, the original project RombergLab's Wiimote handling
+  traces back to.
+
+- esp-web-tools (https://github.com/esphome/esp-web-tools), licensed under
+  the Apache License, Version 2.0. Vendored, unmodified, under
+  tools/web-flash/vendor/esp-web-tools/.

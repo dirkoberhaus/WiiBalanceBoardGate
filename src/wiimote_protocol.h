@@ -6,11 +6,13 @@
 
 /*
  * Wiimote/Balance-Board wire protocol: command builders and report parsers.
- * Ported from RombergLab's wiiRemoteFramework/WiiRemote.m (DarwiinRemote),
- * which is a known-working reference implementation. Byte offsets here are
- * shifted by -2 relative to that Objective-C code's `dp[]` arrays, because
- * esp_hidh already strips the Bluetooth transaction header and report-ID
- * byte before handing us `data`/`length` (see ESP_HIDH_INPUT_EVENT).
+ * Ported from RombergLab's (https://github.com/bendermh/RombergLab,
+ * Apache-2.0) wiiRemoteFramework/WiiRemote.m, which carries "Copyright 2006
+ * KIMURA Hiroaki" from DarwiinRemote, the original project it traces back
+ * to - see NOTICE. Byte offsets here are shifted by -2 relative to that
+ * Objective-C code's `dp[]` arrays, because esp_hidh already strips the
+ * Bluetooth transaction header and report-ID byte before handing us
+ * `data`/`length` (see ESP_HIDH_INPUT_EVENT).
  */
 
 #define WIIMOTE_MAX_CMD_LEN 21

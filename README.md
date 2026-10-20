@@ -226,3 +226,12 @@ it.
 | Bluetooth device name filter | `kNamePrefix` in `src/wiimote_bt.c` |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for how the pieces fit together.
+
+## License
+
+Apache License 2.0 - see [LICENSE](LICENSE). `src/wiimote_protocol.c`/`.h`
+is ported from [RombergLab](https://github.com/bendermh/RombergLab)
+(Apache-2.0), which itself traces back to DarwiinRemote;
+`tools/web-flash/vendor/esp-web-tools/` is vendored from
+[esp-web-tools](https://github.com/esphome/esp-web-tools) (Apache-2.0) -
+see [NOTICE](NOTICE) for the full attribution.
