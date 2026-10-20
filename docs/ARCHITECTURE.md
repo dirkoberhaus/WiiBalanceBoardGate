@@ -196,15 +196,27 @@ preset at any time (clearing the button's active state).
 
 ## Firmware updates (OTA)
 
-Boards in the field have no USB access and, as SoftAPs, no route to the
-internet either - so a pull-based updater (device polls a remote server) was
-ruled out in favor of a **local push**: `src/ota.c` exposes `POST /update`
-on the same `esp_http_server` instance that already serves the web UI,
+**The documented, customer-facing update path is USB, not this** - see
+[README.md](README.md#updating-boards-already-in-the-field) for the
+GitHub-Pages-hosted browser flasher. Getting a `.bin` file to an end user
+and having them upload it through a web form turned out more cumbersome in
+practice than "plug in a cable, click install," even though a WiFi push
+sounded like the more convenient option on paper when this was first built.
+This section documents the mechanism this project still carries as a
+fallback (e.g. for scripted maintenance while already on the board's WiFi),
+not what's actually recommended day to day.
+
+Boards in the field, as SoftAPs, have no route to the internet - so a
+pull-based updater (device polls a remote server) was ruled out from the
+start in favor of a **local push**: `src/ota.c` exposes `POST /update` on
+the same `esp_http_server` instance that already serves the web UI,
 accepting a raw `firmware.bin` body and writing it straight into flash via
 `esp_ota_ops` (`esp_ota_begin`/`esp_ota_write`/`esp_ota_end`,
 `esp_ota_set_boot_partition`). `GET /version` reports the running image's
 version (from `esp_ota_get_partition_description`); the web UI's
-"Firmware-Update" section wraps both.
+"Firmware-Update" section wraps both - that section is still in
+`index.html` and fully functional, just not part of the documented
+customer flow anymore.
 
 ```mermaid
 sequenceDiagram
@@ -235,11 +247,12 @@ under the 4MB flash size this project already requires for BT+WiFi.
 
 Since this partition table change can only take effect via a full USB
 reflash (OTA never rewrites the partition table itself), boards flashed
-before this existed need exactly one more USB flash to reach it -
+before this existed need one USB flash to reach it -
 [`tools/web-flash/`](../tools/web-flash/) packages that as a browser-based
 (ESP Web Tools / WebSerial) flasher a customer can run without installing
-PlatformIO, so this isn't a permanent "developer has to drive to the
-customer" situation. See [README.md](../README.md#updating-boards-already-in-the-field).
+PlatformIO. That same tool is also the documented path for every update
+after that, not just this one-time migration - see
+[README.md](../README.md#updating-boards-already-in-the-field).
 
 ### Rollback protects against a bad image bricking a board
 

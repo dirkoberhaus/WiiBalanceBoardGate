@@ -142,36 +142,30 @@ while True:
 
 ## Updating boards already in the field
 
-**One-time USB step for boards flashed before OTA support existed:** OTA
-updates only rewrite an app partition, never the partition table itself, so
-a board still running the old single-`factory` layout can't receive its
-*first* OTA update until it's reflashed once over USB with a build from
-*this* `partitions.csv` (dual `ota_0`/`ota_1`). After that one USB flash,
-every later update can go over WiFi.
-
-For boards already out with end users, `pio run --target upload` isn't
-realistic - they don't have PlatformIO installed. Instead,
-[`tools/web-flash/`](tools/web-flash/) is a self-contained browser flasher
-(ESP Web Tools / WebSerial, Chrome/Edge only).
-
-**Hosted (preferred):** every push to `main` rebuilds all three
-environments and publishes `tools/web-flash/` with fresh firmware baked in
-to GitHub Pages via `.github/workflows/build.yml`'s `package-pages`/
-`deploy-pages` jobs:
+**Recommended for every update, not just the first one:** the browser-based
+USB flasher at
 
     https://dirkoberhaus.github.io/WiiBalanceBoardGate/
 
-Send customers that link directly - no zip, no local server, nothing to
-install; WebSerial just needs an HTTPS origin, which Pages provides for
-free. Requires a one-time repo setting (**Settings → Pages → Build and
-deployment → Source: "GitHub Actions"**) that only a repo admin can set, not
-something this workflow can do on its own. The firmware `.bin` files end up
-publicly reachable at that URL regardless of the repo's own visibility -
-GitHub Pages has no private option outside Enterprise Cloud - which is fine
-here since they're not secret (no image signing; the same files already get
-emailed out via the zip below).
+([`tools/web-flash/`](tools/web-flash/), ESP Web Tools / WebSerial,
+Chrome/Edge only). Every push to `main` rebuilds all three environments and
+republishes this page with fresh firmware baked in, via
+`.github/workflows/build.yml`'s `package-pages`/`deploy-pages` jobs. Send
+customers that link directly - plug in via USB-C, pick the board model,
+click install, done; no PlatformIO, no zip, nothing to install beyond a
+supported browser. This is also the only way to get a board still on the
+old pre-OTA single-`factory` partition layout onto the current layout,
+since OTA updates only ever rewrite an app partition, never the partition
+table itself.
 
-**Offline fallback:**
+Needs a one-time repo setting only a repo admin can make (**Settings →
+Pages → Build and deployment → Source: "GitHub Actions"**) - already done
+for this repo. The firmware `.bin` files end up publicly reachable at that
+URL regardless of the repo's own visibility - GitHub Pages has no private
+option outside Enterprise Cloud - which is fine here since they're not
+secret (no image signing).
+
+**Offline fallback**, for when the hosted page isn't an option:
 
 ```sh
 tools/package_web_flasher.sh
@@ -179,42 +173,30 @@ tools/package_web_flasher.sh
 
 builds all three board environments and zips `tools/web-flash/` (page +
 vendored ESP Web Tools JS + a tiny local-server start script per OS) into
-`dist/wiibalanceboardgate-web-flasher-<version>.zip`, for when the hosted
-page isn't an option. Send that zip to the customer -
-`tools/web-flash/ANLEITUNG.txt` (German, written for them) walks through
-double-clicking the start script, picking their board model, and flashing
-over USB-C. Re-run the packaging script after any firmware change meant to
-reach boards still on the pre-OTA layout.
+`dist/wiibalanceboardgate-web-flasher-<version>.zip`. Send that zip to the
+customer - `tools/web-flash/ANLEITUNG.txt` (German, written for them) walks
+through double-clicking the start script, picking their board model, and
+flashing over USB-C.
 
-Once a board is on the OTA-capable layout, firmware can be pushed over WiFi
-via the web UI's "Firmware-Update" section (see
-[BENUTZERANLEITUNG.md](docs/BENUTZERANLEITUNG.md#firmware-aktualisieren-optional)
-for the end-user steps). To build an update:
+**Technical fallback, not customer-facing:** the board also exposes a WiFi
+OTA endpoint (`POST /update`, `GET /version`) that writes to the inactive
+OTA slot and reboots into it, with rollback if the new image doesn't come
+up cleanly - see [ARCHITECTURE.md](ARCHITECTURE.md#firmware-updates-ota)
+for how it works. In practice the USB flasher above turned out simpler for
+actual end users (no need to get a `.bin` file to them first, nothing to
+upload through a form), so this isn't part of the documented
+customer-facing update flow - but it's still there, e.g. for scripted
+maintenance while already on the board's WiFi:
 
 ```sh
 pio run -e heltec-lora32-v2   # or ttgo-t-display / mini-d1, matching the board
-```
-
-The file to hand out is `.pio/build/<env>/firmware.bin` - *not*
-`bootloader.bin` or `partitions.bin`, and not the `.elf`. Send that one file
-to whoever is updating the board; they upload it through the web UI (or,
-from a script/terminal while connected to the board's WiFi):
-
-```sh
 curl --data-binary @.pio/build/heltec-lora32-v2/firmware.bin http://board/update
 ```
-
-The device writes the new image to its inactive OTA slot, validates it, and
-only then reboots into it - the previous image is left untouched until that
-point, and the bootloader automatically reverts to it if the new image
-doesn't come up cleanly (see [ARCHITECTURE.md](ARCHITECTURE.md#firmware-updates-ota)).
-`GET /version` reports the currently running build's version (the web UI
-shows this under "Firmware-Update" too).
 
 **Only push a `firmware.bin` built from the same environment the board is
 already running** - mixing e.g. a `ttgo-t-display` build onto a board that's
 actually a Heltec swaps the display backend and pin assumptions along with
-it.
+it. This applies to both update paths above.
 
 ## Configuration knobs
 

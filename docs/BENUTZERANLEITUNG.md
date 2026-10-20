@@ -72,21 +72,23 @@ Anzeige.
 
 ## Firmware aktualisieren (optional)
 
-Falls du eine neue Firmware-Datei (`firmware.bin`) bekommen hast:
+Dafür brauchst du kurz einen Computer (Windows/Mac/Linux) mit **Google
+Chrome, Microsoft Edge oder Opera** (Firefox/Safari/Handy-Browser gehen
+nicht) und ein USB-C-Kabel — nicht das WLAN des Boards.
 
-1. Mit dem WLAN des Boards verbinden und die Seite öffnen (siehe oben).
-2. Ganz unten auf **"Firmware-Update"** tippen, um den Bereich aufzuklappen.
-3. Die `firmware.bin`-Datei auswählen und auf **"Update hochladen"** tippen.
-4. Warten, bis der Fortschritt bei 100% ist — das Board startet danach
-   automatisch neu. Die WLAN-Verbindung geht dabei kurz verloren, das ist
-   normal.
-5. Nach ca. 10-15 Sekunden neu mit dem WLAN verbinden und die Seite erneut
-   öffnen — unter "Firmware-Update" steht jetzt die neue Version.
+1. Board per USB-C mit dem Computer verbinden.
+2. Im Browser öffnen: **https://dirkoberhaus.github.io/WiiBalanceBoardGate/**
+3. Neben deinem Board-Modell (Heltec / TTGO / Mini D1) auf
+   **"Installieren"** tippen.
+4. Im Auswahlfenster den seriellen Port deines Boards auswählen und
+   "Verbinden" bestätigen.
+5. Warten, bis der Fortschrittsbalken bei 100% ist (ca. 1-2 Minuten). Das
+   Board währenddessen nicht vom Kabel trennen.
+6. Fertig — Board vom Computer trennen und wie gewohnt mit Strom versorgen.
 
-Falls nach dem Update etwas nicht mehr funktioniert: einfach nochmal die
-Stromversorgung trennen und neu verbinden. Das Board merkt sich automatisch,
-ob die neue Firmware tatsächlich hochgefahren ist — tut sie das nicht,
-springt es von selbst auf die vorherige, funktionierende Version zurück.
+Das Board merkt sich automatisch, ob die neue Firmware tatsächlich
+hochgefahren ist — tut sie das nicht, springt es von selbst auf die
+vorherige, funktionierende Version zurück.
 
 ## Problembehandlung
 
