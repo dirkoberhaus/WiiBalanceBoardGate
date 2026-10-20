@@ -59,12 +59,12 @@ jobs:
             .pio/build/${{ matrix.environment }}/ota_data_initial.bin
           if-no-files-found: error
 
-  # Publishes tools/web-flash/ (the browser USB flasher - see its
-  # ANLEITUNG.txt) as a GitHub Pages site with this run's freshly built
-  # firmware baked in, so flashing a board is just "open this link" instead
-  # of the zip + local-server fallback tools/package_web_flasher.sh
-  # produces. Main-branch pushes only - PRs/other branches don't touch the
-  # live page customers use.
+  # Publishes the project's GitHub Pages site: a landing page
+  # (tools/web-home/), the browser USB flasher (tools/web-flash/ - see its
+  # ANLEITUNG.txt) with this run's freshly built firmware baked in under
+  # /flash/, and the Markdown docs rendered to HTML under /docs/ (see
+  # tools/render_docs.py). Main-branch pushes only - PRs/other branches
+  # don't touch the live page customers use.
   package-pages:
     needs: build
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -77,14 +77,24 @@ jobs:
           pattern: firmware-*
           path: artifacts
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install markdown
+
       - run: |
           set -eu
           mkdir -p site
-          cp -r tools/web-flash/. site/
-          rm -rf site/bin
+          cp -r tools/web-home/. site/
+          python3 tools/render_docs.py site/docs
+
+          mkdir -p site/flash
+          cp -r tools/web-flash/. site/flash/
+          rm -rf site/flash/bin
           for env in heltec-lora32-v2 ttgo-t-display mini-d1; do
-            mkdir -p "site/bin/$env"
-            cp "artifacts/firmware-$env/"* "site/bin/$env/"
+            mkdir -p "site/flash/bin/$env"
+            cp "artifacts/firmware-$env/"* "site/flash/bin/$env/"
           done
 
       - uses: actions/upload-pages-artifact@v3

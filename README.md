@@ -57,7 +57,7 @@ The first build downloads the ESP32 toolchain/framework and can take
 several minutes; after that, incremental builds are fast.
 
 A pre-build step (`patch_framework.py`) automatically patches one file in
-the downloaded ESP-IDF framework — see [ARCHITECTURE.md](ARCHITECTURE.md#the-bta_sec_none-patch)
+the downloaded ESP-IDF framework — see [ARCHITECTURE.md](docs/ARCHITECTURE.md#the-bta_sec_none-patch)
 for why this is necessary. It's idempotent and safe to ignore; you'll see a
 `Patched ...` line the first time it runs.
 
@@ -123,7 +123,7 @@ while True:
 2. Press the little **SYNC** button in the Balance Board's battery
    compartment. The board only accepts a Bluetooth connection during the
    ~20s window after that press — this needs to happen every time, there's
-   no persistent pairing (see [ARCHITECTURE.md](ARCHITECTURE.md#why-sync-every-time)).
+   no persistent pairing (see [ARCHITECTURE.md](docs/ARCHITECTURE.md#why-sync-every-time)).
 3. Connect your phone/laptop to the `WiiBalanceBoardGate-XXXXXX` network and
    browse to **any hostname** — e.g. `http://board/` — for the live
    weight/COP visualization with tap-to-set target and audio deviation
@@ -145,7 +145,7 @@ while True:
 **Recommended for every update, not just the first one:** the browser-based
 USB flasher at
 
-    https://dirkoberhaus.github.io/WiiBalanceBoardGate/
+    https://dirkoberhaus.github.io/WiiBalanceBoardGate/flash/
 
 ([`tools/web-flash/`](tools/web-flash/), ESP Web Tools / WebSerial,
 Chrome/Edge only). Every push to `main` rebuilds all three environments and
@@ -157,6 +157,14 @@ supported browser. This is also the only way to get a board still on the
 old pre-OTA single-`factory` partition layout onto the current layout,
 since OTA updates only ever rewrite an app partition, never the partition
 table itself.
+
+The Pages root ([`tools/web-home/`](tools/web-home/)) is a small landing
+page linking to the flasher above and to the docs, which
+[`tools/render_docs.py`](tools/render_docs.py) renders from this README and
+`docs/*.md` into standalone styled HTML (including the Mermaid diagrams in
+ARCHITECTURE.md) as part of the same `package-pages` job - not meant to be
+opened directly, see https://dirkoberhaus.github.io/WiiBalanceBoardGate/
+instead.
 
 Needs a one-time repo setting only a repo admin can make (**Settings →
 Pages → Build and deployment → Source: "GitHub Actions"**) - already done
@@ -181,7 +189,7 @@ flashing over USB-C.
 **Technical fallback, not customer-facing:** the board also exposes a WiFi
 OTA endpoint (`POST /update`, `GET /version`) that writes to the inactive
 OTA slot and reboots into it, with rollback if the new image doesn't come
-up cleanly - see [ARCHITECTURE.md](ARCHITECTURE.md#firmware-updates-ota)
+up cleanly - see [ARCHITECTURE.md](docs/ARCHITECTURE.md#firmware-updates-ota)
 for how it works. In practice the USB flasher above turned out simpler for
 actual end users (no need to get a `.bin` file to them first, nothing to
 upload through a form), so this isn't part of the documented
@@ -207,7 +215,7 @@ it. This applies to both update paths above.
 | Display pins | top of `src/display_ssd1306.c` / `src/display_st7789.c` |
 | Bluetooth device name filter | `kNamePrefix` in `src/wiimote_bt.c` |
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for how the pieces fit together.
+See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together.
 
 ## License
 

@@ -82,7 +82,7 @@ Chrome, Microsoft Edge oder Opera** (Firefox/Safari/Handy-Browser gehen
 nicht) und ein USB-C-Kabel — nicht das WLAN des Boards.
 
 1. Board per USB-C mit dem Computer verbinden.
-2. Im Browser öffnen: **https://dirkoberhaus.github.io/WiiBalanceBoardGate/**
+2. Im Browser öffnen: **https://dirkoberhaus.github.io/WiiBalanceBoardGate/flash/**
 3. Neben deinem Board-Modell (Heltec / TTGO / Mini D1) auf
    **"Installieren"** tippen.
 4. Im Auswahlfenster den seriellen Port deines Boards auswählen und

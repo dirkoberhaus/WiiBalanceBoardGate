@@ -8,7 +8,7 @@ der Weg für jedes zukünftige Update, nicht nur für die Ersteinrichtung.
 EINFACHSTER WEG: Diese Seite ist auch online erreichbar, dann brauchst du
 gar kein Zip und kein Startskript - einfach im Browser öffnen:
 
-    https://dirkoberhaus.github.io/WiiBalanceBoardGate/
+    https://dirkoberhaus.github.io/WiiBalanceBoardGate/flash/
 
 Die Schritte 3-7 unten sind dann identisch, nur Schritt 1-2 (Zip entpacken,
 Startskript starten) entfallen. Der Rest dieser Anleitung beschreibt den
@@ -56,7 +56,7 @@ So geht's:
    Benutzeranleitung.
 
 Für zukünftige Updates einfach wieder hierher zurückkommen (am besten
-https://dirkoberhaus.github.io/WiiBalanceBoardGate/ als Lesezeichen
+https://dirkoberhaus.github.io/WiiBalanceBoardGate/flash/ als Lesezeichen
 speichern) und die Schritte 3-6 wiederholen.
 
 Bei Problemen:

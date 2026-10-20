@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WiiBalanceBoardGate</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 28px 20px 60px; box-sizing: border-box;
+    background: #14161a; color: #e8e8ea;
+    font-family: -apple-system, system-ui, sans-serif;
+    max-width: 720px; margin-left: auto; margin-right: auto;
+  }
+  h1 { font-size: 1.7rem; font-weight: 600; margin: 0 0 6px; }
+  .tagline { color: #9aa0a8; font-size: 1rem; margin: 0 0 28px; line-height: 1.5; }
+  h2 {
+    font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em;
+    color: #9aa0a8; font-weight: 600; margin: 34px 0 12px;
+  }
+  .cards { display: flex; flex-direction: column; gap: 10px; }
+  a.card {
+    display: flex; align-items: center; gap: 14px;
+    background: #1e2128; border: 1px solid #3a3f47; border-radius: 12px;
+    padding: 16px 18px; text-decoration: none; color: inherit;
+  }
+  a.card:hover { border-color: #4ade80; }
+  a.card .icon { font-size: 1.6rem; line-height: 1; flex: 0 0 auto; }
+  a.card .label { font-weight: 600; font-size: 0.98rem; }
+  a.card .sub { font-size: 0.82rem; color: #9aa0a8; margin-top: 2px; }
+  a.card.primary { border-color: #4ade80; background: #1a2420; }
+  footer {
+    margin-top: 48px; padding-top: 18px; border-top: 1px solid #2a2f38;
+    font-size: 0.8rem; color: #70757d; line-height: 1.6;
+  }
+  footer a { color: #9aa0a8; }
+</style>
+</head>
+<body>
+  <h1>WiiBalanceBoardGate</h1>
+  <p class="tagline">
+    ESP32 firmware that bridges a Wii Balance Board (classic Bluetooth) to
+    any phone or laptop over its own WiFi access point - live weight/
+    center-of-pressure data as JSON over WebSocket, plus a small built-in
+    web UI with an archery-specific 60%/40% balance preset.
+  </p>
+
+  <h2>Get started</h2>
+  <div class="cards">
+    <a class="card primary" href="flash/">
+      <span class="icon">🔧</span>
+      <span>
+        <span class="label">Flash or update a board</span>
+        <span class="sub">Browser-based USB flasher - no install, works for first setup and every later update</span>
+      </span>
+    </a>
+    <a class="card" href="docs/benutzeranleitung.html">
+      <span class="icon">📋</span>
+      <span>
+        <span class="label">Benutzeranleitung</span>
+        <span class="sub">German end-user quickstart - connecting, syncing, using the board</span>
+      </span>
+    </a>
+  </div>
+
+  <h2>Documentation</h2>
+  <div class="cards">
+    <a class="card" href="docs/readme.html">
+      <span class="icon">📖</span>
+      <span>
+        <span class="label">README</span>
+        <span class="sub">Build, flash, hardware requirements, configuration</span>
+      </span>
+    </a>
+    <a class="card" href="docs/architecture.html">
+      <span class="icon">🧩</span>
+      <span>
+        <span class="label">Architecture</span>
+        <span class="sub">How the pieces fit together, known gotchas, diagrams</span>
+      </span>
+    </a>
+    <a class="card" href="https://github.com/dirkoberhaus/WiiBalanceBoardGate">
+      <span class="icon">💻</span>
+      <span>
+        <span class="label">Source code</span>
+        <span class="sub">github.com/dirkoberhaus/WiiBalanceBoardGate</span>
+      </span>
+    </a>
+  </div>
+
+  <footer>
+    Apache License 2.0. Independently developed, not affiliated with or
+    endorsed by Nintendo or Espressif - see the
+    <a href="docs/readme.html#license">README</a> for license and
+    trademark details.
+  </footer>
+</body>
+</html>
