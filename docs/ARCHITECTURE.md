@@ -173,10 +173,9 @@ per corner), has any active tare offset subtracted, and is handed to
 ```
 
 `esp_us` is the ESP32's own `esp_timer_get_time()` value, not wall-clock
-time — a consumer that needs to line this up with e.g. video frames should
-timestamp each WebSocket message on arrival instead (see the discussion
-in this project's git history / chat log about syncing with the ArrowForm
-iOS app for exactly that reasoning).
+time — a consumer that needs to line this up with e.g. video frames (as
+came up while syncing with an external companion app) should timestamp
+each WebSocket message on arrival instead.
 
 The web page (`index.html`) computes center-of-pressure client-side from
 the four corner values, lets you tap the canvas to set a target point, and
