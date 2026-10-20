@@ -39,7 +39,12 @@ Kamera draufhalten, antippen, fertig. Alternativ manuell verbinden:
 - Netzwerk: `WiiBalanceBoardGate-XXXXXX` (Name steht auf dem Board)
 - Passwort: `balanceboard`
 
-## 4. Seite öffnen
+Direkt nach dem Verbinden öffnet sich auf den meisten Handys automatisch
+ein Browser-Fenster mit der Anzeige (iOS/Android erkennen das Board als
+"Netzwerk mit Anmeldeseite" und zeigen sie von selbst) — dann ist Schritt 4
+schon erledigt.
+
+## 4. Seite öffnen (falls sie sich nicht von selbst geöffnet hat)
 
 Im Browser eine beliebige Adresse eingeben, z.B. `http://board/` (oder
 `192.168.4.1`, falls das nicht klappt). Es öffnet sich automatisch die

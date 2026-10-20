@@ -158,10 +158,28 @@ static const httpd_uri_t ota_update_uri = {
     .handler = ota_update_post_handler,
 };
 
+// Catch-all for every GET path that isn't one of the specific routes above -
+// must be registered last, since esp_http_server tries registered handlers
+// in order and the wildcard would otherwise shadow the more specific ones.
+// Exists for one reason: iOS/Android probe a known URL right after joining
+// a WiFi network (e.g. iOS's http://captive.apple.com/hotspot-detect.html)
+// and expect an exact "Success" response; anything else - including this
+// handler's normal dashboard page - makes them treat the network as a
+// captive portal and pop a browser open to it automatically. Combined with
+// dns_server.c already resolving every hostname (including captive.apple.com)
+// to this device, that probe lands here, so scanning the WiFi QR code joins
+// the network *and* opens the dashboard without a second manual step.
+static const httpd_uri_t catchall_uri = {
+    .uri = "/*",
+    .method = HTTP_GET,
+    .handler = root_handler,
+};
+
 esp_err_t ws_server_start(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_open_sockets = MAX_SOCKETS;
+    config.uri_match_fn = httpd_uri_match_wildcard; // needed for catchall_uri's "/*"
 
     esp_err_t err = httpd_start(&s_server, &config);
     if (err != ESP_OK) {
@@ -187,7 +205,12 @@ esp_err_t ws_server_start(void)
     if (err != ESP_OK) {
         return err;
     }
-    return httpd_register_uri_handler(s_server, &ws_uri);
+    err = httpd_register_uri_handler(s_server, &ws_uri);
+    if (err != ESP_OK) {
+        return err;
+    }
+    // Must be last - see catchall_uri's comment above.
+    return httpd_register_uri_handler(s_server, &catchall_uri);
 }
 
 // Fills `out_fds` (capacity MAX_SOCKETS) with the fds that are actual live
