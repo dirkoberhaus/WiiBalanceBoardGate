@@ -162,8 +162,12 @@ void display_draw_text(uint8_t col, uint8_t row, const char *text)
     if (row >= ROWS) {
         return;
     }
-    while (*text && col < COLS) {
-        const unsigned char *glyph = font5x7_glyph(*text);
+    // Clears all the way to COLS, even past the end of `text` - callers
+    // always draw a full row at a time (see display.h), and a shorter
+    // string must blank out whatever a previous, longer one left behind at
+    // the same row rather than leave stray trailing glyphs on screen.
+    while (col < COLS) {
+        const unsigned char *glyph = *text ? font5x7_glyph(*text) : NULL;
         int x0 = col * CELL_W, y0 = row * CELL_H;
 
         uint8_t buf[CELL_W * CELL_H * 2];
@@ -183,7 +187,9 @@ void display_draw_text(uint8_t col, uint8_t row, const char *text)
         write_data(buf, sizeof(buf));
 
         col++;
-        text++;
+        if (*text) {
+            text++;
+        }
     }
 }
 

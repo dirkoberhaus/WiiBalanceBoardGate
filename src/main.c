@@ -149,7 +149,7 @@ static void redraw_header(void)
             snprintf(line, sizeof(line), "BAT: %d%%", batt);
             display_draw_text(0, BATTERY_ROW, line);
         } else {
-            display_draw_text(0, BATTERY_ROW, "                    "); // blank the row
+            display_draw_text(0, BATTERY_ROW, ""); // blank the row
         }
     }
     display_flush();
@@ -240,13 +240,13 @@ static void on_sample(const wii_bb_sample_t *s)
     uint8_t status_row = gfx ? 7 : 3; // below the graphics panel vs. its own row
     xSemaphoreTake(s_display_mutex, portMAX_DELAY);
     if (s->kg_valid) {
-        display_draw_text(0, status_row, "                    ");
+        display_draw_text(0, status_row, "");
     } else {
         display_draw_text(0, status_row, "UNCALIBRATED");
     }
 
     if (s_tare_msg_until_us && now >= s_tare_msg_until_us) {
-        display_draw_text(0, 2, "                    "); // blank the row
+        display_draw_text(0, 2, ""); // blank the row
         s_tare_msg_until_us = 0;
     }
     redraw_cop_panel(s);
